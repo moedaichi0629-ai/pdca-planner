@@ -1,0 +1,5 @@
+node_modules/
+# 書き出したバックアップ（本人のデータ）
+pdca-planner-[0-9]*.json
+.DS_Store
+Thumbs.db

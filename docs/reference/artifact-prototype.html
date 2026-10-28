@@ -1,0 +1,534 @@
+<title>日次PDCAプランナー</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one narrow planner column — header, tab switch, then the active sheet (today / progress / week setup). */
+:root {
+  --bg: #eef1f5; --surface: #ffffff; --sunk: #f6f8fb; --ink: #1c2633; --muted: #5b6878; --line: #d6dde6;
+  --accent: #2b5bc9; --accent-soft: #e3ebfb; --on-accent: #ffffff;
+  --ok: #23804f; --ok-soft: #dff1e7; --warn: #a86a12; --warn-soft: #f8ecd6; --bad: #b8352a; --bad-soft: #f8e1de;
+  --font-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11161d; --surface: #19202a; --sunk: #141a22; --ink: #e5eaf0; --muted: #94a2b2; --line: #2a3441;
+  --accent: #7fa3ff; --accent-soft: #1f2b47; --on-accent: #0f1624;
+  --ok: #5ec48c; --ok-soft: #173326; --warn: #e3a64c; --warn-soft: #3a2c14; --bad: #f07466; --bad-soft: #3d1d1a;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11161d; --surface: #19202a; --sunk: #141a22; --ink: #e5eaf0; --muted: #94a2b2; --line: #2a3441;
+  --accent: #7fa3ff; --accent-soft: #1f2b47; --on-accent: #0f1624;
+  --ok: #5ec48c; --ok-soft: #173326; --warn: #e3a64c; --warn-soft: #3a2c14; --bad: #f07466; --bad-soft: #3d1d1a;
+  color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 1.3rem; margin: 0; text-wrap: balance; letter-spacing: .02em; }
+h2 { font-size: 1.05rem; margin: 0; }
+h3 { font-size: .95rem; margin: 0; color: var(--muted); font-weight: 700; }
+p { margin: 0; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.head-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.save { font-size: .8rem; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.save::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.save[data-s="saving"]::before { background: var(--warn); }
+.save[data-s="err"]::before, .save[data-s="local"]::before { background: var(--bad); }
+.save[data-s="loading"]::before { background: var(--line); }
+
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px; gap: 4px; }
+.tabs button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 700; padding: 8px 4px; border-radius: 7px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
+
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.between { justify-content: space-between; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+
+button.btn { font: inherit; font-weight: 700; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); padding: 9px 16px; border-radius: 8px; cursor: pointer; }
+button.btn.ghost { background: transparent; color: var(--accent); }
+button.btn.quiet { background: transparent; border-color: var(--line); color: var(--muted); font-weight: 400; padding: 6px 10px; }
+button.btn.danger { border-color: var(--bad); color: var(--bad); background: transparent; font-weight: 400; padding: 6px 10px; }
+button.btn.danger.armed { background: var(--bad); color: var(--on-accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+input, select { font: inherit; color: var(--ink); background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; min-width: 0; }
+input[type="number"] { font-family: var(--font-num); width: 6.5em; }
+input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); margin: 0; flex: none; }
+label.f { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: .85rem; border: 1px solid var(--line); background: var(--sunk); color: var(--ink); padding: 5px 10px; border-radius: 999px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chip.off { color: var(--muted); text-decoration: line-through; }
+.chip.today { box-shadow: inset 0 0 0 2px var(--accent); }
+
+.empty { text-align: center; padding: 28px 8px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.empty p { max-width: 32em; }
+
+.meter { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+.meter div { background: var(--sunk); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; }
+.meter b { font-family: var(--font-num); font-size: 1.05rem; }
+.meter span { font-size: .75rem; color: var(--muted); }
+
+.task { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 4px 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.task:first-child { border-top: 0; }
+.task .name { font-weight: 700; overflow-wrap: anywhere; }
+.task.done .name { color: var(--muted); text-decoration: line-through; }
+.task .act { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: .85rem; color: var(--muted); }
+.skip { background: var(--warn-soft); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.skip b { color: var(--warn); }
+details { border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+
+.pill { display: inline-block; font-size: .78rem; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.done { background: var(--accent-soft); color: var(--accent); }
+.pill.wait { background: var(--sunk); color: var(--muted); border: 1px solid var(--line); }
+
+.prog { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--line); }
+.prog:first-child { border-top: 0; }
+.bar { position: relative; height: 10px; background: var(--sunk); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 999px; }
+.bar u { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--ink); opacity: .55; }
+
+.items { display: flex; flex-direction: column; gap: 10px; }
+.item { display: grid; grid-template-columns: minmax(0,2fr) repeat(4, minmax(0,1fr)); gap: 8px; align-items: end; padding: 12px; background: var(--sunk); border-radius: 8px; }
+.item input, .item select { width: 100%; background: var(--surface); }
+.item .foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; font-size: .82rem; color: var(--muted); }
+@media (max-width: 560px) {
+  .item { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .item .wide { grid-column: 1 / -1; }
+}
+.note { font-size: .82rem; color: var(--muted); background: var(--sunk); border-radius: 8px; padding: 10px 12px; }
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: width .3s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="head-l">
+      <h1>日次PDCAプランナー</h1>
+      <span id="weekLabel" class="small muted">読み込み中…</span>
+    </div>
+    <span id="save" class="save" data-s="loading">読み込み中</span>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="today" aria-selected="true">今日</button>
+    <button role="tab" data-tab="progress" aria-selected="false">進捗</button>
+    <button role="tab" data-tab="setup" aria-selected="false">週の設定</button>
+  </nav>
+  <main id="panel" class="sheet">
+    <div class="empty"><p class="muted">保存したデータを読み込んでいます。</p></div>
+  </main>
+</div>
+
+<script>
+// ---------- helpers ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return ymd(d); };
+const WD = "日月火水木金土";
+const dlabel = s => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
+const todayStr = () => ymd(new Date());
+const fmtMin = m => { m = Math.max(0, Math.round(m)); if (m < 60) return m + "分"; const h = Math.floor(m / 60), r = m % 60; return r ? `${h}時間${r}分` : `${h}時間`; };
+const uid = () => Math.random().toString(36).slice(2, 10);
+const n = v => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+
+// ---------- week calculations ----------
+function datesOf(w) { const out = []; for (let d = w.start; d <= w.end && out.length < 62; d = addDays(d, 1)) out.push(d); return out; }
+function workdays(w) { return datesOf(w).filter(d => !(w.offDays || []).includes(d)); }
+function sumLog(w, id, pred) {
+  let s = 0;
+  for (const [d, day] of Object.entries(w.days || {})) if (pred(d)) s += n(day.log?.[id]?.qty);
+  return s;
+}
+
+// 今日の必要量 =（目標 − 前日までの実績）÷ 今日を含む残り稼働日数。優先度順に使える時間へ詰める。
+function planDay(w, date, hours) {
+  const remDays = workdays(w).filter(d => d > date).length + 1;
+  let avail = Math.round(n(hours) * 60);
+  const items = [...w.items].sort((a, b) => n(a.priority) - n(b.priority));
+  const plan = [], skipped = [];
+  for (const it of items) {
+    const remaining = Math.max(0, n(it.target) - sumLog(w, it.id, d => d < date));
+    if (remaining <= 0) continue;
+    const need = Math.ceil(remaining / remDays);
+    const per = Math.max(0, n(it.minutes));
+    const qty = per > 0 ? Math.min(need, Math.floor(avail / per)) : need;
+    if (qty > 0) { plan.push({ itemId: it.id, qty, min: qty * per }); avail -= qty * per; }
+    if (qty < need) skipped.push({ itemId: it.id, qty: need - qty, min: (need - qty) * per });
+  }
+  return { plan, skipped };
+}
+
+function elapsedDays(w, t) {
+  const wd = workdays(w);
+  if (t > w.end) return wd.length;
+  return wd.filter(d => d < t).length + (wd.includes(t) && w.days?.[t]?.closed ? 1 : 0);
+}
+function judge(actual, target, elapsed, total) {
+  if (target <= 0) return { k: "wait", label: "目標なし" };
+  if (actual >= target) return { k: "done", label: "達成" };
+  if (elapsed === 0 || total === 0) return { k: "wait", label: "これから" };
+  const r = actual / (target * elapsed / total);
+  if (r >= 1) return { k: "ok", label: "予定通り" };
+  if (r >= 0.8) return { k: "warn", label: "遅れ気味" };
+  return { k: "bad", label: "遅れ" };
+}
+function avgPer(name) {
+  let q = 0, m = 0;
+  for (const w of Object.values(store.weeks)) {
+    const it = (w.items || []).find(i => i.name === name);
+    if (!it) continue;
+    for (const day of Object.values(w.days || {})) {
+      const l = day.log?.[it.id];
+      if (l && n(l.qty) > 0 && n(l.min) > 0) { q += n(l.qty); m += n(l.min); }
+    }
+  }
+  return q ? m / q : null;
+}
+
+// ---------- storage (db capability, falling back to this browser) ----------
+const store = { mode: "loading", db: null, weeks: {}, settings: {}, dirty: {}, timers: {}, queue: {} };
+
+function setSave(s) {
+  const el = $("#save");
+  const text = { loading: "読み込み中", ok: "保存済み", saving: "保存中…", err: "保存できませんでした", local: "この端末にだけ保存" }[s];
+  el.dataset.s = s; el.textContent = text;
+}
+function persistLocal() {
+  try { localStorage.setItem("pdca-planner", JSON.stringify({ weeks: store.weeks, settings: store.settings })); } catch (e) {}
+}
+function queueSave(path, getData, delay = 500) {
+  store.dirty[path] = true;
+  if (store.mode === "local") { clearTimeout(store.timers[path]); store.timers[path] = setTimeout(() => { persistLocal(); store.dirty[path] = false; }, 200); return; }
+  setSave("saving");
+  clearTimeout(store.timers[path]);
+  store.timers[path] = setTimeout(() => {
+    store.timers[path] = null;
+    const run = async () => {
+      const data = getData();
+      if (data === undefined) await store.db.doc(path).delete();
+      else await store.db.doc(path).set(JSON.parse(JSON.stringify(data)));
+    };
+    store.queue[path] = (store.queue[path] || Promise.resolve()).then(run).then(() => {
+      if (!store.timers[path]) store.dirty[path] = false;
+      if (!Object.values(store.dirty).some(Boolean)) setSave("ok");
+    }).catch(() => setSave("err"));
+  }, delay);
+}
+const saveWeek = (w, delay) => queueSave("weeks/" + w.id, () => store.weeks[w.id], delay);
+const saveSettings = () => queueSave("settings/main", () => store.settings, 0);
+
+async function initStore() {
+  let db = null;
+  try {
+    if (window.claude?.use) db = await Promise.race([window.claude.use("db"), new Promise(r => setTimeout(() => r(null), 10000))]);
+  } catch (e) { db = null; }
+  if (!db) {
+    store.mode = "local";
+    try { const o = JSON.parse(localStorage.getItem("pdca-planner") || "null"); if (o) { store.weeks = o.weeks || {}; store.settings = o.settings || {}; } } catch (e) {}
+    setSave("local"); render(); return;
+  }
+  store.db = db; store.mode = "db";
+  let ready = { w: false, s: false };
+  const done = () => { if (ready.w && ready.s && $("#save").dataset.s === "loading") setSave("ok"); };
+  db.collection("weeks").onSnapshot(snap => {
+    const next = {};
+    snap.docs.forEach(d => { next[d.id] = store.dirty["weeks/" + d.id] && store.weeks[d.id] ? store.weeks[d.id] : structuredClone(d.data()); });
+    for (const id of Object.keys(store.weeks)) if (store.dirty["weeks/" + id] && !next[id]) next[id] = store.weeks[id];
+    const changed = JSON.stringify(next) !== JSON.stringify(store.weeks);
+    store.weeks = next;
+    if (changed || !ready.w) { ready.w = true; done(); render(); }
+  }, () => setSave("err"));
+  db.doc("settings/main").onSnapshot(snap => {
+    const next = store.dirty["settings/main"] ? store.settings : (snap.exists ? structuredClone(snap.data()) : {});
+    const changed = JSON.stringify(next) !== JSON.stringify(store.settings);
+    store.settings = next;
+    if (changed || !ready.s) { ready.s = true; done(); render(); }
+  }, () => setSave("err"));
+}
+
+// ---------- view state ----------
+const ui = { tab: "today", date: null, armed: null };
+try { const t = localStorage.getItem("pdca-planner-tab"); if (t) ui.tab = t; } catch (e) {}
+
+function sortedWeeks() { return Object.values(store.weeks).sort((a, b) => a.start < b.start ? 1 : -1); }
+function curWeek() {
+  const w = store.weeks[store.settings.currentWeek];
+  if (w) return w;
+  const t = todayStr(), list = sortedWeeks();
+  return list.find(x => x.start <= t && t <= x.end) || list[0] || null;
+}
+function activeDate(w) {
+  const ds = datesOf(w);
+  if (ui.date && ds.includes(ui.date)) return ui.date;
+  const t = todayStr();
+  return ds.includes(t) ? t : (t > w.end ? w.end : w.start);
+}
+
+// ---------- render ----------
+function render() {
+  if (store.mode === "loading") return;
+  const fid = document.activeElement?.id;
+  const w = curWeek();
+  $("#weekLabel").textContent = w ? `${dlabel(w.start)}〜${dlabel(w.end)} の週` : "週がまだありません";
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === ui.tab)));
+  const p = $("#panel");
+  if (ui.tab === "setup") p.innerHTML = setupView(w);
+  else if (!w) p.innerHTML = emptyView("まず1週間の期間を決めましょう", "「週の設定」で期間を入れて週を作ると、その週の目標を登録できます。", "週を作る");
+  else if (!w.items.length) p.innerHTML = emptyView("この週の目標がまだありません", "「週の設定」で、やること・週の目標量・1回あたりの時間・優先度を登録してください。登録すると、その日に使える時間から予定を計算します。", "目標を登録する");
+  else p.innerHTML = ui.tab === "today" ? todayView(w) : progressView(w);
+  if (fid) { const el = document.getElementById(fid); if (el) el.focus(); }
+}
+
+function emptyView(title, body, btn) {
+  return `<div class="empty"><h2>${esc(title)}</h2><p class="muted">${esc(body)}</p><button class="btn" data-act="goto-setup">${esc(btn)}</button></div>`;
+}
+
+function itemMap(w) { return Object.fromEntries(w.items.map(i => [i.id, i])); }
+
+function todayView(w) {
+  const date = activeDate(w), t = todayStr();
+  const day = w.days?.[date];
+  const im = itemMap(w);
+  const off = (w.offDays || []).includes(date);
+  const chips = datesOf(w).map(d => `<button class="chip${(w.offDays || []).includes(d) ? " off" : ""}${d === t ? " today" : ""}" aria-pressed="${d === date}" data-act="pick-date" data-date="${d}">${dlabel(d)}</button>`).join("");
+  let body;
+  if (!day || !day.plan) {
+    body = `<div class="stack">
+      <h2>${dlabel(date)}${off ? ' <span class="pill wait">休みの日</span>' : ""}</h2>
+      <p class="muted small">この日に作業に使える時間を入れてください。週の残りの量を残りの日数で割り、優先度の高い順に時間内へ並べます。</p>
+      <div class="row">
+        <label class="f">使える時間（時間）<input id="hours" type="number" min="0" max="24" step="0.5" inputmode="decimal" value="${esc(store.settings.lastHours ?? "")}" placeholder="例 3"></label>
+        <button class="btn" data-act="make-plan" style="align-self:flex-end">予定を作る</button>
+      </div>
+    </div>`;
+  } else {
+    const log = day.log || {};
+    const planMin = day.plan.reduce((s, x) => s + x.min, 0);
+    const actMin = Object.values(log).reduce((s, l) => s + n(l.min), 0);
+    const doneCount = day.plan.filter(x => log[x.itemId]?.done).length;
+    const rows = day.plan.filter(x => im[x.itemId]).map(x => taskRow(im[x.itemId], x, log[x.itemId], date)).join("") || `<p class="muted">この日にやる量は残っていません。週の目標はすべて達成済みか、0件です。</p>`;
+    const skipped = (day.skipped || []).filter(x => im[x.itemId]);
+    const skipHtml = skipped.length ? `<div class="skip"><b>今日は入らなかった</b>${skipped.map(x => `<span class="small">${esc(im[x.itemId].name)}：${x.qty}${esc(im[x.itemId].unit)}（${fmtMin(x.min)}）</span>`).join("")}<span class="small muted">残りの日の予定に自動で回ります。遅れが続く場合は目標量か使える時間を見直してください。</span></div>` : "";
+    const planned = new Set(day.plan.map(x => x.itemId));
+    const extra = w.items.filter(i => !planned.has(i.id));
+    const extraHtml = extra.length ? `<details${extra.some(i => log[i.id]) ? " open" : ""}><summary>予定外にやった分を記録する</summary><div>${extra.map(i => taskRow(i, null, log[i.id], date)).join("")}</div></details>` : "";
+    body = `<div class="row between"><h2>${dlabel(date)} の予定</h2><button class="btn quiet" data-act="replan">時間を変えて作り直す</button></div>
+      <div class="meter">
+        <div><b>${fmtMin(n(day.hours) * 60)}</b><span>使える時間</span></div>
+        <div><b>${fmtMin(planMin)}</b><span>予定</span></div>
+        <div><b>${fmtMin(actMin)}</b><span>実際にかかった時間</span></div>
+      </div>
+      <div>${rows}</div>
+      ${skipHtml}
+      ${extraHtml}
+      <div class="row between">
+        <span class="small muted">完了 <span class="num">${doneCount}/${day.plan.length}</span> 項目</span>
+        <button class="btn ${day.closed ? "ghost" : ""}" data-act="close-day">${day.closed ? "締めを取り消す" : "この日を締める"}</button>
+      </div>
+      ${day.closed ? `<p class="note">この日は締め済みです。進捗の「予定通り／遅れ」の判定にこの日の実績が含まれます。</p>` : `<p class="note">作業が終わったら「この日を締める」を押すと、進捗の判定にこの日が加わります。</p>`}`;
+  }
+  return `<div class="chips">${chips}</div>${body}`;
+}
+
+function taskRow(it, plan, l, date) {
+  const done = !!l?.done;
+  const k = it.id;
+  const target = plan ? `予定 <span class="num">${plan.qty}</span>${esc(it.unit)} · ${fmtMin(plan.min)}` : `1${esc(it.unit)}あたり ${fmtMin(n(it.minutes))}`;
+  return `<div class="task${done ? " done" : ""}">
+    ${plan ? `<input type="checkbox" id="done-${k}" data-act="toggle-done" data-item="${k}" ${done ? "checked" : ""} aria-label="${esc(it.name)}を完了にする">` : `<span></span>`}
+    <div class="name">${esc(it.name)} <span class="small muted" style="font-weight:400">${target}</span></div>
+    <div class="act">
+      <label class="row" style="gap:6px">実績<input id="qty-${k}" type="number" min="0" step="1" inputmode="numeric" data-act="log" data-field="qty" data-item="${k}" value="${esc(l?.qty ?? "")}" placeholder="${plan ? plan.qty : 0}">${esc(it.unit)}</label>
+      <label class="row" style="gap:6px">かかった時間<input id="min-${k}" type="number" min="0" step="5" inputmode="numeric" data-act="log" data-field="min" data-item="${k}" value="${esc(l?.min ?? "")}" placeholder="${plan ? plan.min : 0}">分</label>
+    </div>
+  </div>`;
+}
+
+function progressView(w) {
+  const t = todayStr();
+  const wd = workdays(w);
+  const elapsed = elapsedDays(w, t);
+  const closedToday = w.days?.[t]?.closed;
+  const remDays = wd.filter(d => d > t || (d === t && !closedToday)).length;
+  let tMin = 0, aMin = 0, remMin = 0;
+  const rows = [...w.items].sort((a, b) => n(a.priority) - n(b.priority)).map(it => {
+    const target = n(it.target), actual = sumLog(w, it.id, () => true);
+    const st = judge(actual, target, elapsed, wd.length);
+    const remaining = Math.max(0, target - actual);
+    tMin += target * n(it.minutes); aMin += Math.min(actual, target) * n(it.minutes); remMin += remaining * n(it.minutes);
+    const pct = target ? Math.round(actual / target * 100) : 0;
+    const exp = wd.length ? Math.min(100, elapsed / wd.length * 100) : 0;
+    const perDay = remDays ? Math.ceil(remaining / remDays) : remaining;
+    return `<div class="prog">
+      <div class="row between"><span style="font-weight:700;overflow-wrap:anywhere;min-width:0">${esc(it.name)}</span><span class="pill ${st.k}">${st.label}</span></div>
+      <div class="bar" role="img" aria-label="達成率${pct}%"><i style="width:${Math.min(100, pct)}%"></i>${elapsed ? `<u style="left:calc(${exp}% - 1px)"></u>` : ""}</div>
+      <div class="row between small muted">
+        <span><span class="num">${actual}/${target}</span>${esc(it.unit)}（<span class="num">${pct}</span>%）</span>
+        <span>${remaining ? (remDays ? `残り${remaining}${esc(it.unit)} → 1日あたり${perDay}${esc(it.unit)}` : `残り${remaining}${esc(it.unit)}（週の稼働日は終了）`) : "完了"}</span>
+      </div>
+    </div>`;
+  }).join("");
+  const overall = judge(aMin, tMin, elapsed, wd.length);
+  const need = remDays ? remMin / remDays : remMin;
+  return `<div class="row between"><h2>週の進捗</h2><span class="pill ${overall.k}">全体：${overall.label}</span></div>
+    <div class="meter">
+      <div><b>${elapsed}/${wd.length}日</b><span>経過した稼働日</span></div>
+      <div><b>${fmtMin(remMin)}</b><span>残りの作業時間</span></div>
+      <div><b>${remDays ? fmtMin(need) : "-"}</b><span>1日あたり必要</span></div>
+    </div>
+    <div>${rows}</div>
+    <p class="note">判定は「実績 ÷ 今の時点で終わっているはずの量」で出しています。100%以上で予定通り、80〜99%で遅れ気味、80%未満で遅れです。終わっているはずの量は、締めた日と過ぎた日の数で計算します（バーの縦線）。全体の判定は、各項目を作業時間の重みで合わせたものです。</p>`;
+}
+
+function setupView(w) {
+  const list = sortedWeeks();
+  const t = todayStr();
+  const newStart = list.length ? addDays(list[0].end, 1) : t;
+  const createForm = `<div class="stack">
+    <h3>${list.length ? "新しい週を作る" : "最初の週を作る"}</h3>
+    <div class="row">
+      <label class="f">開始日<input id="new-start" type="date" value="${newStart}"></label>
+      <label class="f">終了日<input id="new-end" type="date" value="${addDays(newStart, 6)}"></label>
+      ${w && w.items.length ? `<label class="row small" style="gap:6px;align-self:flex-end"><input id="new-copy" type="checkbox" checked>今の週の項目を引き継ぐ</label>` : ""}
+      <button class="btn ${w ? "ghost" : ""}" data-act="create-week" style="align-self:flex-end">週を作る</button>
+    </div>
+    <p id="create-msg" class="small" style="color:var(--bad)"></p>
+  </div>`;
+  if (!w) return `<h2>週の設定</h2><p class="muted">月や週のPDCAで決めた「週の目標」をここに登録します。まず期間を決めてください。</p>${createForm}`;
+
+  const sel = list.length > 1 ? `<label class="f">表示する週<select id="week-select" data-act="select-week">${list.map(x => `<option value="${x.id}"${x.id === w.id ? " selected" : ""}>${dlabel(x.start)}〜${dlabel(x.end)}</option>`).join("")}</select></label>` : "";
+  const offChips = datesOf(w).map(d => `<button class="chip${(w.offDays || []).includes(d) ? " off" : ""}" aria-pressed="${!(w.offDays || []).includes(d)}" data-act="toggle-off" data-date="${d}">${dlabel(d)}</button>`).join("");
+  const items = w.items.map((it, i) => {
+    const avg = avgPer(it.name);
+    const avgHtml = avg != null ? `実績の平均 ${fmtMin(avg)}／${esc(it.unit || "回")}${Math.round(avg) !== n(it.minutes) ? ` <button class="btn quiet" data-act="apply-avg" data-item="${it.id}">標準時間に反映</button>` : ""}` : "実績が入ると、1回あたりの平均時間が出ます";
+    return `<div class="item">
+      <label class="f wide">やること<input id="name-${it.id}" data-act="item" data-field="name" data-item="${it.id}" value="${esc(it.name)}" placeholder="例 ココナラ商品の出品"></label>
+      <label class="f">週の目標量<input id="target-${it.id}" type="number" min="0" step="1" data-act="item" data-field="target" data-item="${it.id}" value="${esc(it.target)}"></label>
+      <label class="f">単位<input id="unit-${it.id}" data-act="item" data-field="unit" data-item="${it.id}" value="${esc(it.unit)}" placeholder="件"></label>
+      <label class="f">1回の時間(分)<input id="minutes-${it.id}" type="number" min="0" step="5" data-act="item" data-field="minutes" data-item="${it.id}" value="${esc(it.minutes)}"></label>
+      <label class="f">優先度<select id="priority-${it.id}" data-act="item" data-field="priority" data-item="${it.id}">${[1, 2, 3, 4, 5].map(p => `<option value="${p}"${n(it.priority) === p ? " selected" : ""}>${p}${p === 1 ? "（最優先）" : ""}</option>`).join("")}</select></label>
+      <div class="foot"><span>${avgHtml}</span><button class="btn danger${ui.armed === it.id ? " armed" : ""}" data-act="del-item" data-item="${it.id}">${ui.armed === it.id ? "もう一度押すと削除" : "削除"}</button></div>
+    </div>`;
+  }).join("");
+  return `<div class="row between"><h2>週の設定</h2>${sel}</div>
+    <div class="row">
+      <label class="f">開始日<input id="w-start" type="date" data-act="week-date" data-field="start" value="${w.start}"></label>
+      <label class="f">終了日<input id="w-end" type="date" data-act="week-date" data-field="end" value="${w.end}"></label>
+    </div>
+    <div class="stack"><h3>作業する日（押すと休みの日に切り替わります）</h3><div class="chips">${offChips}</div></div>
+    <div class="stack">
+      <div class="row between"><h3>週の目標</h3><button class="btn ghost" data-act="add-item">項目を追加</button></div>
+      ${items ? `<div class="items">${items}</div>` : `<p class="note">まだ項目がありません。「項目を追加」から、やること・週の目標量・1回あたりの時間を登録してください。優先度1から順に、その日の時間に入れていきます。</p>`}
+    </div>
+    <details><summary>新しい週を作る</summary><div style="padding-top:10px">${createForm}</div></details>`;
+}
+
+// ---------- actions ----------
+function touchDay(w, date) {
+  w.days = w.days || {};
+  w.days[date] = w.days[date] || {};
+  return w.days[date];
+}
+
+document.addEventListener("click", e => {
+  const tab = e.target.closest("[data-tab]");
+  if (tab) { ui.tab = tab.dataset.tab; try { localStorage.setItem("pdca-planner-tab", ui.tab); } catch (_) {} render(); return; }
+  const el = e.target.closest("[data-act]");
+  if (!el || el.tagName === "INPUT" || el.tagName === "SELECT") return;
+  const w = curWeek(), act = el.dataset.act;
+  if (act === "goto-setup") { ui.tab = "setup"; render(); return; }
+  if (act === "pick-date") { ui.date = el.dataset.date; render(); return; }
+  if (act === "create-week") return createWeek(w);
+  if (!w) return;
+  if (act === "make-plan") {
+    const h = n($("#hours").value);
+    if (h <= 0) { $("#hours").focus(); return; }
+    const date = activeDate(w), day = touchDay(w, date);
+    const r = planDay(w, date, h);
+    Object.assign(day, { hours: h, plan: r.plan, skipped: r.skipped, log: day.log || {} });
+    store.settings.lastHours = h; saveSettings();
+    saveWeek(w, 0); render();
+  } else if (act === "replan") {
+    const day = w.days[activeDate(w)]; delete day.plan; delete day.skipped;
+    saveWeek(w, 0); render();
+  } else if (act === "close-day") {
+    const day = touchDay(w, activeDate(w)); day.closed = !day.closed; saveWeek(w, 0); render();
+  } else if (act === "toggle-off") {
+    const d = el.dataset.date; w.offDays = w.offDays || [];
+    w.offDays = w.offDays.includes(d) ? w.offDays.filter(x => x !== d) : [...w.offDays, d];
+    saveWeek(w, 0); render();
+  } else if (act === "add-item") {
+    const it = { id: uid(), name: "", unit: "件", target: 1, minutes: 30, priority: 3 };
+    w.items.push(it); saveWeek(w); render();
+    document.getElementById("name-" + it.id)?.focus();
+  } else if (act === "del-item") {
+    const id = el.dataset.item;
+    if (ui.armed !== id) { ui.armed = id; render(); setTimeout(() => { if (ui.armed === id) { ui.armed = null; render(); } }, 4000); return; }
+    ui.armed = null; w.items = w.items.filter(i => i.id !== id); saveWeek(w, 0); render();
+  } else if (act === "apply-avg") {
+    const it = w.items.find(i => i.id === el.dataset.item), avg = avgPer(it.name);
+    if (avg != null) { it.minutes = Math.round(avg); saveWeek(w, 0); render(); }
+  }
+});
+
+document.addEventListener("change", e => {
+  const el = e.target.closest("[data-act]");
+  if (!el) return;
+  const w = curWeek(), act = el.dataset.act;
+  if (act === "select-week") { store.settings.currentWeek = el.value; ui.date = null; saveSettings(); render(); return; }
+  if (!w) return;
+  if (act === "item") {
+    const it = w.items.find(i => i.id === el.dataset.item), f = el.dataset.field;
+    it[f] = ["target", "minutes", "priority"].includes(f) ? Math.max(0, n(el.value)) : el.value.trim();
+    saveWeek(w); render();
+  } else if (act === "log" || act === "toggle-done") {
+    const day = touchDay(w, activeDate(w)); day.log = day.log || {};
+    const id = el.dataset.item, l = day.log[id] = day.log[id] || {};
+    if (act === "toggle-done") {
+      l.done = el.checked;
+      const p = (day.plan || []).find(x => x.itemId === id);
+      if (l.done && p) { if (l.qty == null || l.qty === "") l.qty = p.qty; if (l.min == null || l.min === "") l.min = p.min; }
+    } else {
+      l[el.dataset.field] = el.value === "" ? "" : Math.max(0, n(el.value));
+    }
+    if (!l.done && (l.qty === "" || l.qty == null) && (l.min === "" || l.min == null)) delete day.log[id];
+    saveWeek(w); render();
+  } else if (act === "week-date") {
+    const v = el.value, f = el.dataset.field;
+    const s = f === "start" ? v : w.start, en = f === "end" ? v : w.end;
+    if (!v || s > en || datesOf({ start: s, end: en }).length > 31) { render(); return; }
+    w[f] = v; w.offDays = (w.offDays || []).filter(d => d >= w.start && d <= w.end);
+    saveWeek(w, 0); render();
+  }
+});
+
+function createWeek(cur) {
+  const s = $("#new-start").value, en = $("#new-end").value, msg = $("#create-msg");
+  if (!s || !en) { msg.textContent = "開始日と終了日を入れてください。"; return; }
+  if (s > en) { msg.textContent = "終了日は開始日より後の日にしてください。"; return; }
+  if (datesOf({ start: s, end: en }).length > 31) { msg.textContent = "1つの週は31日までにしてください。"; return; }
+  const copy = $("#new-copy")?.checked && cur;
+  const w = { id: uid(), start: s, end: en, offDays: [], days: {},
+    items: copy ? cur.items.map(i => ({ ...i, id: uid() })) : [] };
+  store.weeks[w.id] = w;
+  store.settings.currentWeek = w.id; ui.date = null;
+  saveWeek(w, 0); saveSettings(); render();
+}
+
+render();
+initStore();
+</script>

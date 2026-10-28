@@ -1,0 +1,9 @@
+{
+  "name": "pdca-planner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "週の目標を1日の予定に落とし込む個人用ツール",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  }
+}
