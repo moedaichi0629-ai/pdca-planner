@@ -37,6 +37,7 @@
     notice: loaded.error, // 画面上部に出す理由
     createMsg: "",
     weekMsg: "",
+    weekDoneMsg: "", // 週を削除したあとに1回だけ出す
     hoursMsg: "",
     dataMsg: null, // { kind: "ok" | "error", text }
     importPending: null, // { data, name }
@@ -267,6 +268,7 @@
 
     if (!w) {
       return `<h2>週の設定</h2>
+        ${ui.weekDoneMsg ? `<p class="small msg-ok">${esc(ui.weekDoneMsg)}</p>` : ""}
         <p class="muted">月や週のPDCAで決めた「週の目標」をここに登録します。まず期間を決めてください（最大${P.MAX_WEEK_DAYS}日）。</p>
         ${createForm}
         ${dataSection()}`;
@@ -284,8 +286,15 @@
       })
       .join("");
     const itemsHtml = items(w).map((it) => itemRow(it)).join("");
+    const delArmed = ui.armed === "week:" + w.id;
+    const deleteBox = `<div class="stack data-box">
+        <h3>この週を削除</h3>
+        <p class="small muted">${dlabel(w.start)}〜${dlabel(w.end)} の週の項目・予定・実績がすべて消えます。月の目標と、月で手入力した実績は残ります（週の項目から集めていた月の実績は、この週の分が減ります）。</p>
+        <div class="row"><button type="button" class="btn danger${delArmed ? " armed" : ""}" data-act="del-week">${delArmed ? "もう一度押すと週を削除" : "この週を削除"}</button></div>
+      </div>`;
 
     return `<div class="row between"><h2>週の設定</h2>${sel}</div>
+      ${ui.weekDoneMsg ? `<p class="small msg-ok">${esc(ui.weekDoneMsg)}</p>` : ""}
       <div class="row">
         <label class="f">開始日<input id="w-start" type="date" data-act="week-date" data-field="start" value="${esc(w.start)}"></label>
         <label class="f">終了日<input id="w-end" type="date" data-act="week-date" data-field="end" value="${esc(w.end)}"></label>
@@ -298,6 +307,7 @@
           ? `<div class="items">${itemsHtml}</div>`
           : `<p class="note">まだ項目がありません。「項目を追加」から、やること・週の目標量・1回あたりの時間を登録してください。優先度1から順に、その日の時間に入れていきます。</p>`}
       </div>
+      ${deleteBox}
       <details${ui.createMsg ? " open" : ""}><summary>新しい週を作る</summary><div style="padding-top:10px">${createForm}</div></details>
       ${dataSection()}`;
   }
@@ -706,6 +716,25 @@
       w.items = items(w).filter((i) => i.id !== id);
       persist();
       render();
+    } else if (act === "del-week") {
+      const key = "week:" + w.id;
+      if (ui.armed !== key) return arm(key);
+      ui.armed = null;
+      const label = `${dlabel(w.start)}〜${dlabel(w.end)}`;
+      // 週だけを消す。月（data.months）には触らない
+      delete data.weeks[w.id];
+      // 残りの週から、今日を含む週かいちばん新しい週を選ぶ（curWeek の選び方）
+      delete data.settings.currentWeek;
+      const next = curWeek();
+      if (next) data.settings.currentWeek = next.id;
+      ui.date = null;
+      ui.weekMsg = "";
+      ui.weekDoneMsg = next
+        ? `${label} の週を削除しました。${dlabel(next.start)}〜${dlabel(next.end)} の週を表示しています。`
+        : `${label} の週を削除しました。`;
+      persist();
+      render();
+      ui.weekDoneMsg = "";
     } else if (act === "apply-avg") {
       const it = items(w).find((i) => i.id === el.dataset.item);
       const avg = it && P.avgMinutesPerUnit(data.weeks, it.name);
