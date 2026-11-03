@@ -194,7 +194,8 @@
           </div>
           <p class="small error">${esc(ui.hoursMsg)}</p>
         </div>
-        ${extrasSection(day)}`;
+        ${extrasSection(day)}
+        ${dayNotesSection(day)}`;
     }
 
     const log = day.log || {};
@@ -227,6 +228,7 @@
       ${skipHtml}
       ${extraHtml}
       ${extrasSection(day)}
+      ${dayNotesSection(day)}
       <div class="row between">
         <span class="small muted">完了 <span class="num">${sum.doneCount}/${sum.planCount}</span> 項目</span>
         <button type="button" class="btn${day.closed ? " ghost" : ""}" data-act="close-day">${day.closed ? "締めを取り消す" : "この日を締める"}</button>
@@ -263,6 +265,19 @@
       <div class="stackbar" role="img" aria-label="${esc(label)}">${bar}</div>
       <ul class="bd-list">${rows}<li><span class="sw free"></span><span class="bd-name">余り</span><span class="bd-val"><b>${fmtMin(b.free)}</b></span></li></ul>
       ${b.dailyShort ? `<p class="warn-text">毎日することだけで時間が足りません。入らなかった分は下の「今日は入らなかった」に出しています。</p>` : ""}
+    </div>`;
+  }
+
+  // F-04 今日のメモ（やったことの細かい内容と振り返り）。入力するたびに保存する
+  function dayNotesSection(day) {
+    const n = day?.notes || {};
+    const field = (f, label, ph) =>
+      `<label class="f">${label}<textarea id="day-note-${f}" data-act="day-note" data-field="${f}" placeholder="${ph}">${esc(n[f])}</textarea></label>`;
+    return `<div class="section">
+      <h3>今日のメモ</h3>
+      ${field("done", "やったこと（細かい内容）", "例 競合を3サービス見た。価格帯は5,000〜8,000円が多い")}
+      ${field("review", "振り返り（良かった点・次にやること）", "例 午前中に出品を終えられた。明日は投稿を先にやる")}
+      <p class="small muted">入力するたびに保存されます。</p>
     </div>`;
   }
 
@@ -1341,6 +1356,15 @@
     // 貼り付けた文章は描画し直しても消えないように覚えておく（保存はしない）
     if (el.dataset?.act === "bulk-text") {
       ui.bulk[el.dataset.scope].text = el.value;
+      return;
+    }
+    // 今日のメモも入力するたびに保存する（描画し直さない）
+    if (el.dataset?.act === "day-note") {
+      const w = curWeek();
+      if (!w) return;
+      const day = touchDay(w, activeDate(w));
+      day.notes = { done: "", review: "", ...(day.notes || {}), [el.dataset.field]: el.value };
+      persist();
       return;
     }
     if (el.dataset?.act !== "review") return;

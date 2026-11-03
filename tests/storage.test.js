@@ -184,6 +184,14 @@ test("予定外にやったこと（extras）の形が違うデータは読み�
   assert.equal(S.parseData(JSON.stringify(week({ "2026-10-27": { hours: 3 } }))).ok, true);
 });
 
+test("今日のメモ（notes）は、なくてもよく、形が違えば読み込まない", () => {
+  const week = (days) => ({ schemaVersion: 4, settings: {}, categories: [], months: {}, weeks: { w_a: { ...sampleWeek, days } } });
+  const ok = S.parseData(JSON.stringify(week({ "2026-10-27": { notes: { done: "競合を3つ見た", review: "<b>明日</b>は投稿から" } } })));
+  assert.equal(ok.ok, true);
+  assert.equal(ok.data.weeks.w_a.days["2026-10-27"].notes.review, "<b>明日</b>は投稿から");
+  assert.equal(S.parseData(JSON.stringify(week({ "2026-10-27": { notes: "x" } }))).ok, false);
+});
+
 test("months の形が違うデータは読み込まない", () => {
   assert.equal(S.parseData(JSON.stringify({ schemaVersion: 2, weeks: {}, months: [] })).ok, false);
   assert.equal(S.parseData(JSON.stringify({ schemaVersion: 2, weeks: {}, months: { "10月": {} } })).ok, false);

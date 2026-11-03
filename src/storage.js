@@ -105,6 +105,7 @@
       if (w.days !== undefined && !isObject(w.days)) return `週 ${id} の days の形が正しくありません`;
       for (const [d, day] of Object.entries(w.days || {})) {
         if (isObject(day) && day.extras !== undefined && !Array.isArray(day.extras)) return `週 ${id} の ${d} の extras の形が正しくありません`;
+        if (isObject(day) && day.notes !== undefined && !isObject(day.notes)) return `週 ${id} の ${d} の notes の形が正しくありません`;
       }
     }
     if (!isObject(data.months)) return "months の形が正しくありません";
