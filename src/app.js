@@ -179,7 +179,7 @@
       return `<div class="chips">${chips}</div>
         <div class="stack">
           <h2>${dlabel(date)}${off ? ' <span class="pill wait">休みの日</span>' : ""}</h2>
-          <p class="muted small">この日に作業に使える時間を入れてください。毎日することを先に入れ、残りの時間を${cats().length ? "カテゴリーの割合で分けて、各カテゴリーの中で" : ""}優先度の高い順に並べます。ほかの項目の量は、週の残りの量を残りの日数で割って出します。</p>
+          <p class="muted small">この日に作業に使える時間を入れてください。毎日することを先に入れ、${cats().length ? "使える時間をカテゴリーの割合で分けて（毎日することはそのカテゴリーの時間に含めます）、各カテゴリーの中で" : "残りの時間を"}優先度の高い順に並べます。ほかの項目の量は、週の残りの量を残りの日数で割って出します。</p>
           <div class="row">
             <label class="f">使える時間（時間）<input id="hours" type="number" min="0.5" max="24" step="0.5" inputmode="decimal" value="${esc(hours)}" placeholder="例 3"></label>
             <button type="button" class="btn end" data-act="make-plan">予定を作る</button>
@@ -245,7 +245,7 @@
         const actual = b.hasActual ? `<span>→ 実際 <b>${fmtMin(x.actualMin)}</b></span>` : "";
         // 毎日することは、その中の項目も並べる
         const sub = (x.items || [])
-          .map((d) => `<li><span class="bd-name">${esc(d.name) || "（削除した項目）"}${d.qty ? ` <span class="muted">${fmtNum(d.qty)}${esc(d.unit)}</span>` : ""}</span><span class="bd-val"><span>予定 <b>${fmtMin(d.planMin)}</b></span>${b.hasActual ? `<span>→ 実際 <b>${fmtMin(d.actualMin)}</b></span>` : ""}</span></li>`)
+          .map((d) => `<li><span class="bd-name"><span class="tag">毎日</span>${esc(d.name) || "（削除した項目）"}${d.qty ? ` <span class="muted">${fmtNum(d.qty)}${esc(d.unit)}</span>` : ""}</span><span class="bd-val"><span>予定 <b>${fmtMin(d.planMin)}</b></span>${b.hasActual ? `<span>→ 実際 <b>${fmtMin(d.actualMin)}</b></span>` : ""}</span></li>`)
           .join("");
         return `<li><span class="sw ${cls(x)}"></span><span class="bd-name">${esc(x.name)}</span><span class="bd-val"><span>予定 <b>${fmtMin(x.planMin)}</b></span>${budget}${actual}</span>${sub ? `<ul class="bd-sub">${sub}</ul>` : ""}</li>`;
       })
@@ -417,7 +417,7 @@
     return `<div class="stack">
       <div class="row between"><h3>カテゴリー（時間の割合）</h3><button type="button" class="btn ghost" data-act="add-cat">カテゴリーを追加</button></div>
       ${list.length
-        ? `<p class="small muted">予定を作るとき、毎日することを引いた残りの時間をこの割合で分けます。カテゴリーを選んでいない項目は「その他」として、カテゴリーで余った時間だけを使います。すべての週で共通です。</p>
+        ? `<p class="small muted">予定を作るとき、その日に使える時間をこの割合で分けます。毎日やる項目はそのカテゴリーの時間に含めます（カテゴリーを選んでいない毎日やる項目だけ、先に引きます）。カテゴリーを選んでいない項目は「その他」として、カテゴリーで余った時間だけを使います。すべての週で共通です。</p>
            <div class="items">${rows}</div>
            <p class="small muted">合計 <span class="num">${total}</span>%</p>`
         : `<p class="note">カテゴリーがないときは、毎日することのあと、優先度の高い順に入れます。「ココナラ 50%・Threads 30%」のように時間の割合を決めると、その割合で予定を作ります。</p>`}

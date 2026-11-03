@@ -445,9 +445,9 @@ function catWeek(items, offDays = []) {
   return { id: "w_cat", start: "2026-11-02", end: "2026-11-08", offDays, items, days: {} };
 }
 
-test("4.2 必須の例: 3時間・毎日すること30分・50/30/20% → 75・45・30分。学習の余り10分がほかのカテゴリーに回る", () => {
+test("4.2 必須の例: 3時間・毎日すること30分（カテゴリーなし）・50/30/20% → 75・45・30分。学習の余り10分がほかのカテゴリーに回る", () => {
   const w = catWeek([
-    { id: "daily", name: "Threads（AI・業務自動化）", unit: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: 3, dailyMin: 30, categoryId: "c_th" },
+    { id: "daily", name: "Threads（AI・業務自動化）", unit: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: 3, dailyMin: 30 },
     { id: "coco", name: "ココナラ競合調査", unit: "サービス", target: 70, minutes: 10, priority: 1, categoryId: "c_coco" }, // 必要量10 = 100分
     { id: "th", name: "Threads分析", unit: "回", target: 70, minutes: 15, priority: 2, categoryId: "c_th" }, // 必要量10 = 150分
     { id: "study", name: "学習", unit: "講義", target: 7, minutes: 20, priority: 3, categoryId: "c_study" }, // 必要量1 = 20分
@@ -462,7 +462,7 @@ test("4.2 必須の例: 3時間・毎日すること30分・50/30/20% → 75・4
   // ココナラ 75分 → 7件(70分)・余り5。Threads 45分 → 3回(45分)。学習 20分・余り10。
   // 余り 5 + 10 = 15分を割合の大きい順に回す: ココナラにもう1件(10分)、残り5分は Threads(15分)に足りない
   assert.deepEqual(r.plan, [
-    { itemId: "daily", qty: 3, min: 30, daily: true, categoryId: "c_th" },
+    { itemId: "daily", qty: 3, min: 30, daily: true },
     { itemId: "coco", qty: 8, min: 80, categoryId: "c_coco" },
     { itemId: "th", qty: 3, min: 45, categoryId: "c_th" },
     { itemId: "study", qty: 1, min: 20, categoryId: "c_study" },
@@ -568,7 +568,7 @@ test("4.7 今日の内訳: 予定は作った時点の区分、実績は予定�
   };
   const b = P.dayBreakdown(day, items, CATS);
   assert.deepEqual(b.segments.map((s) => [s.key, s.budget, s.planMin, s.actualMin]), [
-    ["daily", 30, 30, 40],
+    ["daily", null, 30, 40],
     ["c_coco", 75, 70, 60],
     ["c_th", 45, 0, 0],
     ["c_study", 30, 0, 0],
@@ -576,8 +576,9 @@ test("4.7 今日の内訳: 予定は作った時点の区分、実績は予定�
   ]);
   assert.deepEqual([b.total, b.free, b.hasActual, b.dailyShort], [180, 70, true, false]);
   // 毎日することは項目ごとにも出す
+  assert.equal(b.segments[0].name, "毎日すること（カテゴリーなし）");
   assert.deepEqual(b.segments[0].items, [{ itemId: "daily", name: "投稿", unit: "", qty: 3, planMin: 30, actualMin: 40 }]);
-  assert.equal("items" in b.segments[1], false);
+  assert.deepEqual(b.segments[1].items, []);
 });
 
 test("F-13 カテゴリーの確認と、名前からカテゴリーを当てる（長い名前を優先）", () => {
@@ -640,4 +641,45 @@ test("F-04 予定外にやったことの確認", () => {
   assert.match(P.validateExtra("セミナー", ""), /時間/);
   assert.match(P.validateExtra("セミナー", 0), /時間/);
   assert.match(P.validateExtra("セミナー", 24 * 60 + 1), /24時間/);
+});
+
+test("4.2 カテゴリーの毎日することは、そのカテゴリーの持ち時間に含める（3時間・Threads 30%・毎日30分 → Threads のほかの項目は24分）", () => {
+  const w = catWeek([
+    { id: "daily", name: "Threads投稿", unit: "投稿", target: 21, priority: 1, daily: true, dailyQty: 3, dailyMin: 30, categoryId: "c_th" },
+    { id: "th", name: "Threads分析", unit: "回", target: 70, minutes: 8, priority: 2, categoryId: "c_th" }, // 必要量10 = 80分
+    { id: "coco", name: "出品", unit: "件", target: 70, minutes: 10, priority: 1, categoryId: "c_coco" }, // 必要量10 = 100分
+    { id: "study", name: "学習", unit: "講義", target: 70, minutes: 6, priority: 1, categoryId: "c_study" }, // 必要量10 = 60分
+  ]);
+  const r = P.planDay(w, "2026-11-02", 3, CATS);
+  // 180分を 90・54・36分に分け、Threads の54分に毎日の30分を含める
+  assert.deepEqual(r.alloc.budgets.map((b) => b.min), [90, 54, 36]);
+  const plan = Object.fromEntries(r.plan.map((x) => [x.itemId, [x.qty, x.min]]));
+  // ココナラ 90分 → 9件。Threads 54 − 30 = 24分 → 3回(24分)。学習 36分 → 6講義。余りなし
+  assert.deepEqual(plan, { daily: [3, 30], th: [3, 24], coco: [9, 90], study: [6, 36] });
+
+  const b = P.dayBreakdown({ hours: 3, plan: r.plan, alloc: r.alloc, log: { daily: { qty: 3, min: 35 } } }, w.items, CATS);
+  const th = b.segments.find((s) => s.key === "c_th");
+  assert.deepEqual([th.budget, th.planMin, th.actualMin], [54, 54, 35]);
+  assert.deepEqual(th.items.map((x) => [x.itemId, x.planMin, x.actualMin]), [["daily", 30, 35]]);
+  assert.equal(b.segments.some((s) => s.key === "daily"), false); // カテゴリーなしの毎日することはない
+});
+
+test("4.2 毎日することだけでカテゴリーの割合を超えたら、超えた分はほかのカテゴリーから割合で減らす", () => {
+  const w = catWeek([
+    { id: "daily", name: "学習（毎日）", unit: "講義", target: 7, priority: 1, daily: true, dailyQty: 1, dailyMin: 60, categoryId: "c_study" },
+  ]);
+  const r = P.planDay(w, "2026-11-02", 3, CATS);
+  // 学習は 20% = 36分だが毎日60分なので60分。残り120分を 50:30 で 75・45分
+  assert.deepEqual(r.alloc.budgets.map((b) => b.min), [75, 45, 60]);
+});
+
+test("4.2 カテゴリーなしの毎日することは先に引き、残りを割合で分ける。カテゴリーありと混ざっていてもよい", () => {
+  const w = catWeek([
+    { id: "d1", name: "日記", unit: "回", target: 7, priority: 1, daily: true, dailyQty: 1, dailyMin: 20 }, // カテゴリーなし
+    { id: "d2", name: "投稿", unit: "投稿", target: 21, priority: 1, daily: true, dailyQty: 3, dailyMin: 30, categoryId: "c_th" },
+  ]);
+  const r = P.planDay(w, "2026-11-02", 3, CATS);
+  // 180 − 20 = 160分を 80・48・32分。Threads の48分に毎日の30分を含める
+  assert.deepEqual(r.alloc.budgets.map((b) => b.min), [80, 48, 32]);
+  assert.equal(r.alloc.dailyMin, 50);
 });

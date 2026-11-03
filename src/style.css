@@ -213,6 +213,7 @@ textarea.bulk-text { min-height: 12em; font-size: .9rem; }
 }
 .bd-sub { list-style: none; flex-basis: 100%; margin: 2px 0 4px 20px; padding: 0 0 0 10px; border-left: 2px solid var(--seg-daily); display: flex; flex-direction: column; gap: 2px; font-size: .8rem; }
 .bd-sub .bd-name { font-weight: 400; }
+.tag { display: inline-block; font-size: .72rem; line-height: 1.4; padding: 0 6px; margin-right: 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); vertical-align: 1px; }
 @media (max-width: 560px) {
   .bd-list li { gap: 0 8px; }
   .bd-list .bd-val { flex-basis: 100%; margin-left: 20px; font-size: .8rem; justify-content: flex-start; }

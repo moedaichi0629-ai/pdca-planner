@@ -143,8 +143,8 @@
   }
 
   // ---------- 4.1 / 4.2 今日の予定 ----------
-  // 1. 毎日すること（稼働日のみ）→ 2. 残りをカテゴリーの割合で分ける → 3. カテゴリーの中で優先度順
-  // → 4. 余った時間を割合の大きい順・その他の順に回す → 5. 入らない分は skipped へ。
+  // 1. 毎日すること（稼働日のみ）→ 2. カテゴリーの持ち時間を割合で出し、そのカテゴリーの毎日することを含める
+  // → 3. 持ち時間の残りでカテゴリーの中を優先度順 → 4. 余った時間を割合の大きい順・その他の順に回す → 5. 入らない分は skipped へ。
   // カテゴリーがなければ、毎日することのあとは優先度順に詰める（今までの割り振り）。
   // 予定の行は { itemId, qty, min }。毎日やる項目は daily: true、カテゴリーがあれば categoryId を足す
   function planDay(week, date, hours, categories) {
@@ -198,20 +198,20 @@
       return q * per;
     };
 
-    const budgets = [];
+    let budgets = [];
     if (!cats.length) {
       for (const e of entries) avail -= fill(e, avail);
     } else {
-      const total = ratioTotal(cats);
-      let pool = avail;
-      for (const c of cats) {
-        const min = total > 0 ? Math.floor((avail * Math.max(0, num(c.ratio))) / total) : 0;
-        budgets.push({ categoryId: c.id, min });
-        pool -= min;
-      }
-      // 3. カテゴリーの中で優先度順。使い切らなかった分は pool へ
+      // 2. カテゴリーの毎日することは、そのカテゴリーの持ち時間に含める
+      const dailyOf = {};
+      for (const r of dailyPlan) if (r.categoryId) dailyOf[r.categoryId] = (dailyOf[r.categoryId] || 0) + r.min;
+      const catDaily = Object.values(dailyOf).reduce((s, v) => s + v, 0);
+      const base = avail + catDaily; // 使える時間 − カテゴリーなしの毎日すること
+      budgets = splitBudgets(cats, base, dailyOf);
+      let pool = base - budgets.reduce((s, b) => s + b.min, 0); // 切り捨ての端数
+      // 3. 持ち時間から毎日することを引いた残りで、カテゴリーの中を優先度順。使い切らなかった分は pool へ
       for (const b of budgets) {
-        let left = b.min;
+        let left = b.min - (dailyOf[b.categoryId] || 0);
         for (const e of entries.filter((x) => categoryOf(x.it, cats) === b.categoryId)) left -= fill(e, left);
         pool += left;
       }
@@ -231,27 +231,47 @@
     return { plan, skipped, alloc: { dailyMin, budgets, dailyShort } };
   }
 
+  // 4.2 手順2 カテゴリーの持ち時間。base を割合で分ける（切り捨て）。
+  // 毎日することだけで割合の分を超えるカテゴリーは毎日することの時間だけにし、残りをほかのカテゴリーで割合どおりに分け直す
+  function splitBudgets(cats, base, dailyOf) {
+    const ratio = (c) => Math.max(0, num(c.ratio));
+    const fixed = {}; // 毎日することの時間だけにしたカテゴリー
+    for (;;) {
+      const rest = cats.filter((c) => !(c.id in fixed));
+      const left = base - Object.values(fixed).reduce((s, v) => s + v, 0);
+      const total = rest.reduce((s, c) => s + ratio(c), 0);
+      const share = (c) => (total > 0 ? Math.floor((left * ratio(c)) / total) : 0);
+      const over = rest.filter((c) => (dailyOf[c.id] || 0) > share(c));
+      if (!over.length) return cats.map((c) => ({ categoryId: c.id, min: c.id in fixed ? fixed[c.id] : share(c) }));
+      for (const c of over) fixed[c.id] = dailyOf[c.id];
+    }
+  }
+
   // 4.7 今日の内訳。毎日すること・各カテゴリー・その他・余りの、持ち時間・予定・実際（分）
-  // 予定は作った時点の区分（予定の行の daily・categoryId）で数え、予定外にやった項目は今の区分で数える
+  // 予定は作った時点の区分（予定の行の daily・categoryId）で数え、予定外にやった項目は今の区分で数える。
+  // 毎日やる項目はそのカテゴリーに数え、カテゴリーなしのものだけ「毎日すること」に数える。
+  // 各区分の items には、その中の毎日やる項目を並べる（予定の順、そのあとに予定外にやった毎日やる項目）
   function dayBreakdown(day, items, categories) {
     const cats = categories || [];
     const im = Object.fromEntries((items || []).map((i) => [i.id, i]));
-    const keyOf = (daily, categoryId) => (daily ? "daily" : categoryOf({ categoryId }, cats) || "other");
+    const keyOf = (daily, categoryId) => categoryOf({ categoryId }, cats) || (daily ? "daily" : "other");
     const plannedKey = {};
     const planMin = {};
-    // 毎日することは項目ごとにも出す（予定の順、そのあとに予定外にやった毎日やる項目）
-    const dailyItems = [];
-    const dailyRow = (id) => {
-      let r = dailyItems.find((x) => x.itemId === id);
-      if (!r) dailyItems.push((r = { itemId: id, name: im[id]?.name ?? "", unit: im[id]?.unit ?? "", qty: 0, planMin: 0, actualMin: 0 }));
+    const dailyItems = {}; // 区分 → 毎日やる項目の一覧
+    const dailyRow = (k, id) => {
+      const list = (dailyItems[k] = dailyItems[k] || []);
+      let r = list.find((x) => x.itemId === id);
+      if (!r) list.push((r = { itemId: id, name: im[id]?.name ?? "", unit: im[id]?.unit ?? "", qty: 0, planMin: 0, actualMin: 0 }));
       return r;
     };
+    const dailyPlanned = new Set();
     for (const p of day?.plan || []) {
       const k = keyOf(p.daily, p.categoryId);
       plannedKey[p.itemId] = k;
       planMin[k] = (planMin[k] || 0) + num(p.min);
-      if (k === "daily") {
-        const r = dailyRow(p.itemId);
+      if (p.daily) {
+        dailyPlanned.add(p.itemId);
+        const r = dailyRow(k, p.itemId);
         r.qty += num(p.qty);
         r.planMin += num(p.min);
       }
@@ -262,7 +282,7 @@
       if (!it && !plannedKey[id]) continue;
       const k = plannedKey[id] || keyOf(isDaily(it), it.categoryId);
       actualMin[k] = (actualMin[k] || 0) + num(l.min);
-      if (k === "daily") dailyRow(id).actualMin += num(l.min);
+      if (dailyPlanned.has(id) || (!plannedKey[id] && isDaily(it))) dailyRow(k, id).actualMin += num(l.min);
     }
     // 予定外にやったことは、選んだカテゴリー（未選択は「その他」）の実際の時間に入れる
     for (const e of day?.extras || []) {
@@ -270,9 +290,11 @@
       actualMin[k] = (actualMin[k] || 0) + num(e.min);
     }
     const budgetOf = Object.fromEntries((day?.alloc?.budgets || []).map((b) => [b.categoryId, num(b.min)]));
-    const seg = (key, kind, name, index, budget) => ({ key, kind, name, index, budget, planMin: planMin[key] || 0, actualMin: actualMin[key] || 0 });
+    const seg = (key, kind, name, index, budget) => ({
+      key, kind, name, index, budget, planMin: planMin[key] || 0, actualMin: actualMin[key] || 0, items: dailyItems[key] || [],
+    });
     const segments = [];
-    if (planMin.daily || actualMin.daily || dailyItems.length) segments.push({ ...seg("daily", "daily", "毎日すること", -1, num(day?.alloc?.dailyMin)), items: dailyItems });
+    if (planMin.daily || actualMin.daily || dailyItems.daily) segments.push(seg("daily", "daily", cats.length ? "毎日すること（カテゴリーなし）" : "毎日すること", -1, null));
     cats.forEach((c, i) => segments.push(seg(c.id, "category", c.name, i, budgetOf[c.id] ?? null)));
     if (planMin.other || actualMin.other) segments.push(seg("other", "other", "その他", -1, null));
     const total = Math.max(0, Math.round(num(day?.hours) * 60));
