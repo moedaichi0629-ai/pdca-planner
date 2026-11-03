@@ -449,8 +449,12 @@
         status: judge(actual, target, el, tot),
       };
     });
+    // 全体の進み具合（実績 ÷ 今の時点で終わっているはずの時間）。終わっているはずの時間が0なら null
+    const expectedAll = anyWeekdays ? expectedMin : wd.length ? (targetMin * elapsed) / wd.length : 0;
+    const pace = expectedAll > 0 ? actualMin / expectedAll : null;
     return {
       items,
+      pace,
       // 曜日指定の項目があるときは、項目ごとの「終わっているはずの時間」を合わせて判定する
       overall: anyWeekdays ? judge(actualMin, targetMin, expectedMin, targetMin) : judge(actualMin, targetMin, elapsed, wd.length),
       elapsed,
@@ -460,6 +464,18 @@
       remainingMin,
       needMinPerDay: remDays ? remainingMin / remDays : remainingMin,
     };
+  }
+
+  // ---------- F-16 犬のキャラクターの顔 ----------
+  // 週の全体の判定から顔を選ぶ。予定通りのうち、進み具合が AHEAD_PACE 以上なら「予定より進んでいる」
+  const AHEAD_PACE = 1.2;
+  function mascotMood(progress) {
+    const k = progress?.overall?.k;
+    if (k === "done") return "sparkle";
+    if (k === "ok") return progress.pace !== null && progress.pace >= AHEAD_PACE ? "sparkle" : "relax";
+    if (k === "warn") return "worry";
+    if (k === "bad") return "mie";
+    return "normal";
   }
 
   // ---------- F-06 標準時間の見直し ----------
@@ -766,6 +782,7 @@
     itemDefaults, goalSourceDefault, findWeekByRange, normalizeImportRows, mergeMonthGoals, mergeWeekItems,
     isDaily, perUnitMin, categoryOf, ratioTotal, validateCategory, guessCategory, goalCategoryDefault, dayBreakdown,
     validateExtra, dayOfWeek, weekdaysOf, hasWeekdays, weekdayDays, minDailyOf,
+    AHEAD_PACE, mascotMood,
   };
 
   if (typeof module !== "undefined" && module.exports) {

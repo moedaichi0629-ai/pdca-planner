@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 現在のプロジェクト状態
 
-フェーズ①のステップ1〜3（計算ロジック・保存処理・画面）を実装済み。あわせて、月のPDCA欄（F-08〜F-10）、文章からまとめて登録（F-11）、毎日すること（F-12）、カテゴリーと時間の割合・今日の内訳（F-13）、曜日指定（F-14）、1日の最低時間（F-15）も実装済み。次はステップ4（1日使ってみての仕上げ）。
+フェーズ①のステップ1〜3（計算ロジック・保存処理・画面）を実装済み。あわせて、月のPDCA欄（F-08〜F-10）、文章からまとめて登録（F-11）、毎日すること（F-12）、カテゴリーと時間の割合・今日の内訳（F-13）、曜日指定（F-14）、1日の最低時間（F-15）、犬のキャラクターと歌舞伎のデザイン（F-16）も実装済み。次はステップ4（1日使ってみての仕上げ）。
 
 ## 技術スタック
 
@@ -33,7 +33,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 index.html        画面（タブ: 今日 / 週の進捗 / 月 / 週の設定）
-src/style.css     スタイル
+src/style.css     スタイル（歌舞伎のデザイン・犬のキャラクターの動き）
+src/mascot.svg    ブラウザのタブのアイコン（犬のキャラクターのふつうの顔）
+personal/         自分だけの画像（hero.jpg）。.gitignore で除外。なくても動く
 src/planner.js    計算ロジック（純粋関数のみ。DOM・localStorage に触らない）
 src/parser.js     PDCA の文章の読み取り（純粋関数のみ。F-11）
 src/storage.js    localStorage の読み書き、JSON 書き出し・読み込み

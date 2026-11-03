@@ -3,3 +3,5 @@ node_modules/
 pdca-planner-[0-9]*.json
 .DS_Store
 Thumbs.db
+# 自分だけの画像（三代目の画像など）。公開しない
+personal/

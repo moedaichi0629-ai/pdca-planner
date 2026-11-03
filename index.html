@@ -4,14 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>日次PDCAプランナー</title>
+  <link rel="icon" type="image/svg+xml" href="src/mascot.svg">
+  <!-- 見出しの筆文字。ネットにつながっていないときは本文と同じ字体になる -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&display=swap">
   <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
+  <!-- 自分の画像（personal/hero.jpg）があれば一番上の帯に出す。personal/ は GitHub に上げない -->
+  <div class="hero"><img src="personal/hero.jpg" alt="" onerror="this.parentElement.remove()"></div>
+  <div class="joshiki" aria-hidden="true"></div>
   <div class="wrap">
     <header>
-      <div class="head-l">
-        <h1>日次PDCAプランナー</h1>
-        <span id="weekLabel" class="small muted">読み込み中…</span>
+      <div class="brand">
+        <span id="mascot" class="mascot-head"></span>
+        <div class="head-l">
+          <h1>日次PDCAプランナー</h1>
+          <span id="weekLabel" class="small muted">読み込み中…</span>
+        </div>
       </div>
       <span id="save" class="save" data-s="loading">読み込み中</span>
     </header>

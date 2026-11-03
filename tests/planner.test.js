@@ -835,3 +835,25 @@ test("4.3 1日の最低時間: 週の進捗は時間でも出し、1日あたり
   assert.equal(late.time.perDayMin, 75); // 残り2日: ceil(150 ÷ 2)
   assert.equal(P.weekProgress(minDailyWeek(), "2026-11-03").items.find((i) => i.itemId === "sell").time, null);
 });
+
+// ---------- F-16 犬のキャラクターの顔 ----------
+test("F-16 顔: 全体の判定と進み具合（120%以上で予定より進んでいる）で選ぶ", () => {
+  const mood = (k, pace = null) => P.mascotMood({ overall: { k }, pace });
+  assert.equal(mood("done"), "sparkle");
+  assert.equal(mood("ok", 1.2), "sparkle");
+  assert.equal(mood("ok", 1.19), "relax");
+  assert.equal(mood("warn", 0.9), "worry");
+  assert.equal(mood("bad", 0.5), "mie");
+  assert.equal(mood("wait"), "normal");
+  assert.equal(mood("none"), "normal");
+  assert.equal(P.mascotMood(null), "normal");
+});
+
+test("F-16 週の進捗の進み具合（pace）は、実績の時間 ÷ 終わっているはずの時間", () => {
+  // 週 11/2〜11/8（稼働日7日）。2日締めて、出品だけ4件（終わっているはずの量の2倍）
+  const w = minDailyWeek({ days: { "2026-11-02": { closed: true, log: { sell: { qty: 2 } } }, "2026-11-03": { closed: true, log: { sell: { qty: 2 } } } } });
+  const pr = P.weekProgress(w, "2026-11-04");
+  // 目標の時間 = 7×30 + 1×180 = 390分。終わっているはずの時間 = 390 × 2/7。実績 = 4×30 = 120分
+  assert.ok(Math.abs(pr.pace - 120 / (390 * 2 / 7)) < 1e-9);
+  assert.equal(P.weekProgress(minDailyWeek(), "2026-11-02").pace, null); // まだ1日も経っていない
+});

@@ -27,6 +27,69 @@
   const fmtNum = (v) => P.num(v).toLocaleString("ja-JP");
   const monthLabel = (m) => `${m.slice(0, 4)}年${Number(m.slice(5, 7))}月`;
 
+  // ---------- F-16 犬のキャラクター ----------
+  // 顔は Planner.mascotMood で選ぶ。sparkle（予定より進んでいる・達成）/ relax（予定通り・寝ている）/
+  // worry（遅れ気味）/ mie（遅れ・見得を切る）/ normal（これから・目標なし）。赤い眉は隈取
+  const MASCOT_INK = "#4a3528";
+  const MASCOT_RED = "#c8302c";
+  function mascotSvg(mood) {
+    const O = MASCOT_INK, RED = MASCOT_RED;
+    const ears = `<g class="ears"><path d="M13 22 C4 25 3 41 9 49 C13 54 20 50 21 43 C22 34 20 25 13 22Z" fill="#d6b88c" stroke="${O}" stroke-width="2"/>
+    <path d="M51 22 C60 25 61 41 55 49 C51 54 44 50 43 43 C42 34 44 25 51 22Z" fill="#d6b88c" stroke="${O}" stroke-width="2"/></g>`;
+    const head = `<path d="M32 13 C46 13 53 23 53 35 C53 48 44 56 32 56 C20 56 11 48 11 35 C11 23 18 13 32 13Z" fill="#fbf3e6" stroke="${O}" stroke-width="2"/>
+    <path d="M27 14 C26 8 30 5 32 5 C34 5 38 8 37 14" fill="#d6b88c" stroke="${O}" stroke-width="2"/><rect x="27.5" y="11.5" width="9" height="3.4" rx="1.5" fill="${RED}" stroke="${O}" stroke-width="1.2"/>
+    <ellipse cx="32" cy="47" rx="9" ry="6" fill="#fff"/>`;
+    const cheeks = `<ellipse cx="18.5" cy="43" rx="3.6" ry="2.4" fill="#f4a0a8" opacity=".75"/><ellipse cx="45.5" cy="43" rx="3.6" ry="2.4" fill="#f4a0a8" opacity=".75"/>`;
+    const nose = `<ellipse cx="32" cy="42.5" rx="4" ry="3" fill="${O}"/><ellipse cx="30.8" cy="41.6" rx="1.2" ry=".7" fill="#fff" opacity=".8"/>`;
+    const smile = `<path d="M32 45 L32 47 M28.5 47.2 Q30.3 49.6 32 47.6 Q33.7 49.6 35.5 47.2" fill="none" stroke="${O}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const brows = (w = 2) => `<path d="M16 30 Q20 25.5 27 28.5" fill="none" stroke="${RED}" stroke-width="${w}" stroke-linecap="round"/><path d="M48 30 Q44 25.5 37 28.5" fill="none" stroke="${RED}" stroke-width="${w}" stroke-linecap="round"/>`;
+    const openEyes = `<g class="eyes"><ellipse cx="23.5" cy="35" rx="4.2" ry="4.8" fill="${O}"/><circle cx="25" cy="33.2" r="1.6" fill="#fff"/><circle cx="22.4" cy="36.8" r=".8" fill="#fff"/>
+    <ellipse cx="40.5" cy="35" rx="4.2" ry="4.8" fill="${O}"/><circle cx="42" cy="33.2" r="1.6" fill="#fff"/><circle cx="39.4" cy="36.8" r=".8" fill="#fff"/></g>`;
+    const star = (x, y, s) => `<path d="M${x} ${y - s} L${x + s * .3} ${y - s * .3} L${x + s} ${y} L${x + s * .3} ${y + s * .3} L${x} ${y + s} L${x - s * .3} ${y + s * .3} L${x - s} ${y} L${x - s * .3} ${y - s * .3}Z"`;
+    let face = "", extra = "";
+    if (mood === "relax") {
+      face = `<path d="M19 35 Q23.5 39.5 28 35" fill="none" stroke="${O}" stroke-width="2.4" stroke-linecap="round"/><path d="M36 35 Q40.5 39.5 45 35" fill="none" stroke="${O}" stroke-width="2.4" stroke-linecap="round"/>${brows()}${smile}`;
+      extra = `<g class="zz"><text x="47" y="17" font-family="sans-serif" font-weight="700" font-size="9" fill="${O}">z</text><text x="53" y="10" font-family="sans-serif" font-weight="700" font-size="7" fill="${O}">z</text></g>`;
+    } else if (mood === "sparkle") {
+      face = `<g class="eyes"><ellipse cx="23.5" cy="35" rx="4.6" ry="5.2" fill="${O}"/>${star(24.6, 33.6, 2.4)} fill="#fff"/><circle cx="22" cy="37.6" r=".9" fill="#fff"/>
+      <ellipse cx="40.5" cy="35" rx="4.6" ry="5.2" fill="${O}"/>${star(41.6, 33.6, 2.4)} fill="#fff"/><circle cx="39" cy="37.6" r=".9" fill="#fff"/></g>${brows()}
+      <path d="M28 46.5 Q32 52 36 46.5Z" fill="#e2626e" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>`;
+      extra = `<g class="twinkle">${star(8, 14, 4)} fill="#e8b130"/>${star(56, 22, 3)} fill="#e8b130"/>${star(55, 52, 3.4)} fill="#e8b130"/></g>`;
+    } else if (mood === "worry") {
+      face = `${openEyes}<path d="M17 28 Q21 30 26 28" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round"/><path d="M47 28 Q43 30 38 28" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round"/>
+      <path d="M29 48.5 Q32 46.5 35 48.5" fill="none" stroke="${O}" stroke-width="1.6" stroke-linecap="round"/>`;
+      extra = `<path class="sweat" d="M51 26 C49 30 48.5 32 51 33.5 C53.5 32 53 30 51 26Z" fill="#7cc3e8" stroke="${O}" stroke-width="1"/>`;
+    } else if (mood === "mie") {
+      // 見得: 寄り目と太い隈取で気合いを入れる
+      face = `<g class="eyes"><ellipse cx="24" cy="35" rx="4.4" ry="4.4" fill="#fff" stroke="${O}" stroke-width="1.6"/><circle cx="26.2" cy="35.5" r="2.3" fill="${O}"/>
+      <ellipse cx="40" cy="35" rx="4.4" ry="4.4" fill="#fff" stroke="${O}" stroke-width="1.6"/><circle cx="37.8" cy="35.5" r="2.3" fill="${O}"/></g>
+      <path d="M14 31 Q19 23 28 29" fill="none" stroke="${RED}" stroke-width="3.2" stroke-linecap="round"/><path d="M50 31 Q45 23 36 29" fill="none" stroke="${RED}" stroke-width="3.2" stroke-linecap="round"/>
+      <path d="M19 39 Q15 41 14 45 M45 39 Q49 41 50 45" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round"/>
+      <path d="M28 49 Q32 46 36 49" fill="none" stroke="${O}" stroke-width="2" stroke-linecap="round"/>`;
+    } else {
+      face = `${openEyes}${brows()}${smile}`;
+    }
+    return `<svg class="mascot m-${mood}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><g class="body">${ears}${head}${mood === "mie" ? "" : cheeks}${nose}${face}</g>${extra}</svg>`;
+  }
+  const MASCOT_TEXT = {
+    sparkle: "予定より進んでいます。よっ、日本一！",
+    done: "今週の目標を達成！ 大当たり〜！",
+    relax: "予定通り。ひと休み中…",
+    worry: "少し遅れ気味。ここから取り返そう",
+    mie: "遅れています。ここで見得を切って巻き返し！",
+    wait: "今週はこれから。まずは1日目！",
+    normal: "週の目標を入れると、顔が変わります",
+  };
+  // 週の全体の判定から顔とひとことを出す
+  function mascotState(w) {
+    if (!w || !items(w).length) return { mood: "normal", text: MASCOT_TEXT.normal };
+    const pr = P.weekProgress(w, todayStr());
+    const mood = P.mascotMood(pr);
+    const k = pr.overall.k;
+    const text = k === "done" ? MASCOT_TEXT.done : k === "wait" ? MASCOT_TEXT.wait : MASCOT_TEXT[mood];
+    return { mood, text };
+  }
+
   // ---------- 状態 ----------
   const loaded = S.load();
   let data = loaded.data;
@@ -130,6 +193,14 @@
     const fid = document.activeElement?.id;
     const w = curWeek();
     $("#weekLabel").textContent = w ? `${dlabel(w.start)}〜${dlabel(w.end)} の週` : "週がまだありません";
+    // ヘッダーの犬は、顔が変わったときだけ描き直す（入力のたびに動きが最初に戻らないように）
+    const ms = mascotState(w);
+    const mEl = $("#mascot");
+    if (mEl.dataset.mood !== ms.mood) {
+      mEl.dataset.mood = ms.mood;
+      mEl.innerHTML = mascotSvg(ms.mood);
+    }
+    mEl.title = ms.text;
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === ui.tab)));
 
     const notice = $("#notice");
@@ -358,7 +429,9 @@
         </div>`;
       })
       .join("");
+    const ms = mascotState(w);
     return `<div class="row between"><h2>週の進捗</h2><span class="pill ${pr.overall.k}">全体：${pr.overall.label}</span></div>
+      <div class="mascot-talk"><div class="mascot-big">${mascotSvg(ms.mood)}</div><p class="bubble">${esc(ms.text)}</p></div>
       <div class="meter">
         <div><b>${pr.elapsed}/${pr.totalDays}日</b><span>経過した稼働日</span></div>
         <div><b>${fmtMin(pr.remainingMin)}</b><span>残りの作業時間</span></div>

@@ -1,32 +1,40 @@
-/* 1列のプランナー: ヘッダー → タブ → 表示中のシート（今日 / 進捗 / 週の設定） */
+/* 1列のプランナー: （自分の画像の帯）→ 定式幕の帯 → ヘッダー → タブ → 表示中のシート（今日 / 進捗 / 月 / 週の設定）
+   デザインは歌舞伎: 生成りに青海波（ダークは墨に市松）、柿色・萌葱・紅、定式幕（黒・柿・萌葱）の帯、筆文字の見出し */
 :root {
-  --bg: #eef1f5; --surface: #ffffff; --sunk: #f6f8fb; --ink: #1c2633; --muted: #5b6878; --line: #d6dde6;
-  --accent: #2b5bc9; --accent-soft: #e3ebfb; --on-accent: #ffffff;
-  --ok: #23804f; --ok-soft: #dff1e7; --warn: #a86a12; --warn-soft: #f8ecd6; --bad: #b8352a; --bad-soft: #f8e1de;
+  --bg: #f4ede0; --surface: #fffaf2; --sunk: #f6efe3; --ink: #2a211c; --muted: #6b5d52; --line: #e0d3bf;
+  --accent: #a94a22; --accent-soft: #f6e3d6; --on-accent: #ffffff;
+  --ok: #3d6b2f; --ok-soft: #e3eedb; --warn: #8c5e00; --warn-soft: #f7ebcc; --bad: #b7282e; --bad-soft: #f7dcdc;
+  --kuma: #c8302c;
+  --jo-black: #231c17; --jo-kaki: #b4532a; --jo-moegi: #3f6b34;
+  --pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20'%3E%3Ccircle cx='20' cy='0' r='20' fill='%23f4ede0'/%3E%3Cg fill='none' stroke='%23e9dfcc' stroke-width='1.2'%3E%3Ccircle cx='20' cy='0' r='17'/%3E%3Ccircle cx='20' cy='0' r='12'/%3E%3Ccircle cx='20' cy='0' r='7'/%3E%3Ccircle cx='20' cy='0' r='2.5'/%3E%3C/g%3E%3Ccircle cx='0' cy='10' r='20' fill='%23f4ede0'/%3E%3Cg fill='none' stroke='%23e9dfcc' stroke-width='1.2'%3E%3Ccircle cx='0' cy='10' r='17'/%3E%3Ccircle cx='0' cy='10' r='12'/%3E%3Ccircle cx='0' cy='10' r='7'/%3E%3Ccircle cx='0' cy='10' r='2.5'/%3E%3C/g%3E%3Ccircle cx='40' cy='10' r='20' fill='%23f4ede0'/%3E%3Cg fill='none' stroke='%23e9dfcc' stroke-width='1.2'%3E%3Ccircle cx='40' cy='10' r='17'/%3E%3Ccircle cx='40' cy='10' r='12'/%3E%3Ccircle cx='40' cy='10' r='7'/%3E%3Ccircle cx='40' cy='10' r='2.5'/%3E%3C/g%3E%3Ccircle cx='20' cy='20' r='20' fill='%23f4ede0'/%3E%3Cg fill='none' stroke='%23e9dfcc' stroke-width='1.2'%3E%3Ccircle cx='20' cy='20' r='17'/%3E%3Ccircle cx='20' cy='20' r='12'/%3E%3Ccircle cx='20' cy='20' r='7'/%3E%3Ccircle cx='20' cy='20' r='2.5'/%3E%3C/g%3E%3Ccircle cx='0' cy='30' r='20' fill='%23f4ede0'/%3E%3Cg fill='none' stroke='%23e9dfcc' stroke-width='1.2'%3E%3Ccircle cx='0' cy='30' r='17'/%3E%3Ccircle cx='0' cy='30' r='12'/%3E%3Ccircle cx='0' cy='30' r='7'/%3E%3Ccircle cx='0' cy='30' r='2.5'/%3E%3C/g%3E%3Ccircle cx='40' cy='30' r='20' fill='%23f4ede0'/%3E%3Cg fill='none' stroke='%23e9dfcc' stroke-width='1.2'%3E%3Ccircle cx='40' cy='30' r='17'/%3E%3Ccircle cx='40' cy='30' r='12'/%3E%3Ccircle cx='40' cy='30' r='7'/%3E%3Ccircle cx='40' cy='30' r='2.5'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 40px 20px;
   --font-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-brush: "Yuji Syuku", var(--font-body);
   --font-num: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --r: 10px;
-  /* 今日の内訳の色（カテゴリーは並び順で c0〜c5 をくり返す） */
-  --c0: #2b5bc9; --c1: #c0582a; --c2: #23804f; --c3: #8a4fbf; --c4: #b08a12; --c5: #1f8a99;
-  --seg-daily: #3f4a5a; --seg-other: #98a3b1;
+  --r: 8px;
+  /* 今日の内訳の色（伝統色。カテゴリーは並び順で c0〜c5 をくり返す）: 柿・萌葱・藍・紅・山吹・江戸紫 */
+  --c0: #b4532a; --c1: #4a7a35; --c2: #2c4f7c; --c3: #b7282e; --c4: #b8860b; --c5: #6b3f87;
+  --seg-daily: #4a3f36; --seg-other: #a89a8a;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #11161d; --surface: #19202a; --sunk: #141a22; --ink: #e5eaf0; --muted: #94a2b2; --line: #2a3441;
-    --accent: #7fa3ff; --accent-soft: #1f2b47; --on-accent: #0f1624;
-    --ok: #5ec48c; --ok-soft: #173326; --warn: #e3a64c; --warn-soft: #3a2c14; --bad: #f07466; --bad-soft: #3d1d1a;
-    --c0: #7fa3ff; --c1: #f0915f; --c2: #5ec48c; --c3: #c295f0; --c4: #e3c25a; --c5: #5fcbd8;
-    --seg-daily: #cfd8e3; --seg-other: #6b7889;
+    --bg: #121010; --surface: #1c1816; --sunk: #161311; --ink: #efe6da; --muted: #ab9f92; --line: #352d28;
+    --accent: #e98d5f; --accent-soft: #3a2418; --on-accent: #1a1210;
+    --ok: #8cc46e; --ok-soft: #1e2c17; --warn: #e6b54a; --warn-soft: #35290f; --bad: #f2777c; --bad-soft: #3d1a1c;
+    --kuma: #e0504a;
+    --jo-black: #050404; --jo-kaki: #c5653a; --jo-moegi: #4f8442;
+    --pattern: repeating-conic-gradient(rgba(255, 255, 255, .028) 0 25%, transparent 0 50%) 0 0 / 28px 28px;
+    --c0: #e98d5f; --c1: #8cc46e; --c2: #7fa6dc; --c3: #f2777c; --c4: #e6b54a; --c5: #b98ad6;
+    --seg-daily: #d9cdbf; --seg-other: #75695e;
     color-scheme: dark;
   }
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
+body { margin: 0; background: var(--pattern), var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
 .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 16px; }
-h1 { font-size: 1.3rem; margin: 0; letter-spacing: .02em; }
-h2 { font-size: 1.05rem; margin: 0; }
+h1 { font-family: var(--font-brush); font-weight: 400; font-size: 1.55rem; line-height: 1.3; margin: 0; letter-spacing: .04em; }
+h2 { font-family: var(--font-brush); font-weight: 400; font-size: 1.25rem; margin: 0; letter-spacing: .03em; }
 h3 { font-size: .95rem; margin: 0; color: var(--muted); font-weight: 700; }
 p { margin: 0; }
 .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
@@ -37,6 +45,40 @@ p { margin: 0; }
 
 header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .head-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+/* F-16 自分の画像の帯・定式幕の帯・犬のキャラクター */
+.hero { height: 120px; overflow: hidden; background: var(--jo-black); }
+.hero img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.joshiki { height: 10px; background: linear-gradient(90deg, var(--jo-black) 0 33.34%, var(--jo-kaki) 33.34% 66.67%, var(--jo-moegi) 66.67%) 0 0 / 96px 100%; }
+.mascot-head { width: 52px; height: 52px; flex: none; border-radius: 50%; background: var(--surface); border: 2px solid var(--line); padding: 2px; }
+.mascot-head svg, .mascot-big svg { display: block; width: 100%; height: 100%; }
+.mascot-talk { display: flex; align-items: center; gap: 12px; }
+.mascot-big { width: 96px; height: 96px; flex: none; }
+.bubble { position: relative; flex: 1; min-width: 0; background: var(--sunk); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-weight: 700; overflow-wrap: anywhere; }
+.bubble::before { content: ""; position: absolute; left: -7px; top: 50%; width: 12px; height: 12px; margin-top: -6px; background: var(--sunk); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg); }
+.mascot { overflow: visible; }
+.mascot .body { transform-origin: 32px 56px; transform-box: view-box; }
+@media (prefers-reduced-motion: no-preference) {
+  .m-relax .body { animation: m-breathe 3.2s ease-in-out infinite; }
+  .m-relax .zz { animation: m-zz 2.6s ease-in-out infinite; }
+  .m-sparkle .body { animation: m-bounce 1.1s ease-in-out infinite; }
+  .m-sparkle .twinkle path { transform-box: fill-box; transform-origin: center; animation: m-twinkle 1.4s ease-in-out infinite; }
+  .m-sparkle .twinkle path:nth-child(2) { animation-delay: .45s; }
+  .m-sparkle .twinkle path:nth-child(3) { animation-delay: .9s; }
+  .m-worry .body { animation: m-sway 2.4s ease-in-out infinite; }
+  .m-worry .sweat { animation: m-sweat 1.8s ease-in infinite; }
+  .m-mie .body { animation: m-mie 2.6s ease-in-out infinite; }
+  .m-normal .eyes { transform-box: fill-box; transform-origin: center; animation: m-blink 4s infinite; }
+}
+@keyframes m-breathe { 50% { transform: scale(1.03, .98) translateY(1px); } }
+@keyframes m-zz { 0% { opacity: 0; transform: translate(0, 4px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(3px, -4px); } }
+@keyframes m-bounce { 50% { transform: translateY(-3px); } }
+@keyframes m-twinkle { 0%, 100% { transform: scale(.4); opacity: .3; } 50% { transform: scale(1.1); opacity: 1; } }
+@keyframes m-sway { 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+@keyframes m-sweat { 0% { opacity: 0; transform: translateY(-2px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(6px); } }
+@keyframes m-mie { 0%, 60%, 100% { transform: rotate(0); } 66% { transform: rotate(-6deg) scale(1.04); } 72%, 90% { transform: rotate(4deg) scale(1.06); } }
+@keyframes m-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
 .save { font-size: .8rem; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .save::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
 .save[data-s="err"]::before { background: var(--bad); }
@@ -46,12 +88,13 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
   display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; font-size: .9rem; overflow-wrap: anywhere; }
 .notice[hidden] { display: none; }
 
-.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px; gap: 4px; }
+.tabs { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 4px 7px; gap: 4px; }
+.tabs::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; border-radius: 2px; background: linear-gradient(90deg, var(--jo-black) 0 33.34%, var(--jo-kaki) 33.34% 66.67%, var(--jo-moegi) 66.67%) 0 0 / 48px 100%; }
 .tabs button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 700; padding: 8px 2px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
 @media (max-width: 420px) { .tabs button { font-size: .85rem; } }
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
 
-.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sheet { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--kuma); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .between { justify-content: space-between; }
 .stack { display: flex; flex-direction: column; gap: 10px; }
