@@ -887,3 +887,16 @@ test("F-17 売上の金額の確認", () => {
   assert.ok(P.validateSale(-1));
   assert.ok(P.validateSale(200000000));
 });
+
+test("F-16 日替わりの画像: 同じ日は同じ画像、次の日は次の画像。最後まで行ったら最初に戻る", () => {
+  const list = ["a.jpg", "b.jpg", "c.jpg"];
+  const first = P.pickDaily(list, "2026-11-04");
+  const i = list.indexOf(first);
+  assert.equal(P.pickDaily(list, "2026-11-04"), first);
+  assert.equal(P.pickDaily(list, "2026-11-05"), list[(i + 1) % 3]);
+  assert.equal(P.pickDaily(list, "2026-11-07"), first); // 3日後は同じ
+  assert.equal(P.pickDaily(list, "2026-12-31") !== null, true);
+  assert.equal(P.pickDaily(["only.jpg", "", 3], "2026-11-04"), "only.jpg"); // 空や文字でないものは使わない
+  assert.equal(P.pickDaily([], "2026-11-04"), null);
+  assert.equal(P.pickDaily(undefined, "2026-11-04"), null);
+});

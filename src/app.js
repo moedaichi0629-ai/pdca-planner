@@ -1538,6 +1538,18 @@
     }
   });
 
+  // F-16 自分の画像の帯。personal/images.js の一覧から日替わりで1枚。一覧がなければ personal/hero.jpg を試す
+  (function showHero() {
+    const hero = $(".hero");
+    const img = $("#hero-img");
+    if (!hero || !img) return;
+    const file = P.pickDaily(Array.isArray(window.PERSONAL_IMAGES) ? window.PERSONAL_IMAGES : ["hero.jpg"], todayStr());
+    if (!file) return hero.remove();
+    img.onload = () => { hero.hidden = false; };
+    img.onerror = () => hero.remove();
+    img.src = "personal/" + file.split("/").map(encodeURIComponent).join("/");
+  })();
+
   if (readOnly) setSave("err", "保存を止めています");
   else setSave("ok", loaded.error ? "空のデータで開始" : "保存済み");
   render();

@@ -498,6 +498,15 @@
     return null;
   }
 
+  // F-16 日替わりの画像。list から date（YYYY-MM-DD）で1つ選ぶ。同じ日は同じもの、次の日は次のもの。空なら null
+  function pickDaily(list, date) {
+    const xs = (Array.isArray(list) ? list : []).filter((x) => typeof x === "string" && x.trim());
+    if (!xs.length) return null;
+    const d = parseDate(date);
+    const n = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+    return xs[((n % xs.length) + xs.length) % xs.length];
+  }
+
   // ---------- F-16 犬のキャラクターの顔 ----------
   // 週の全体の判定から顔を選ぶ。予定通りのうち、進み具合が AHEAD_PACE 以上なら「予定より進んでいる」
   const AHEAD_PACE = 1.2;
@@ -814,7 +823,7 @@
     itemDefaults, goalSourceDefault, findWeekByRange, normalizeImportRows, mergeMonthGoals, mergeWeekItems,
     isDaily, perUnitMin, categoryOf, ratioTotal, validateCategory, guessCategory, goalCategoryDefault, dayBreakdown,
     validateExtra, dayOfWeek, weekdaysOf, hasWeekdays, weekdayDays, minDailyOf,
-    AHEAD_PACE, mascotMood,
+    AHEAD_PACE, mascotMood, pickDaily,
     salesGoalOf, newSalesGoal, salesEntries, salesTotal, validateSale,
   };
 

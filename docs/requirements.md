@@ -136,7 +136,7 @@
 
   - 進み具合 = 全体の判定と同じ「実績の時間 ÷ 今の時点で終わっているはずの時間」
   - 「動きを減らす」設定（prefers-reduced-motion）のときは動かさない。ブラウザのタブのアイコンは、ふつうの顔の静止画（`src/mascot.svg`）
-- `personal/hero.jpg` があれば画面の一番上の帯に出す（なければ出さない）。`personal/` は GitHub に上げない
+- 自分の画像を画面の一番上の帯に出す。`personal/images.js` の `window.PERSONAL_IMAGES`（`personal/` の中のファイル名の配列）から日替わりで1枚（`pickDaily`: 1970-01-01 からの日数 ÷ 枚数の余り番目）。`images.js` がなければ `personal/hero.jpg`。読めなければ帯を出さない。`personal/` は GitHub に上げない
 - 色と模様は歌舞伎: 生成りに青海波（ダークは墨に市松）、柿色・萌葱・紅、定式幕（黒・柿・萌葱）の帯、筆文字の見出し（Google Fonts「Yuji Syuku」。読めないときは本文と同じ字体）
 
 ### F-13 カテゴリーと時間の割合・今日の内訳

@@ -12,8 +12,8 @@
   <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
-  <!-- 自分の画像（personal/hero.jpg）があれば一番上の帯に出す。personal/ は GitHub に上げない -->
-  <div class="hero"><img src="personal/hero.jpg" alt="" onerror="this.parentElement.remove()"></div>
+  <!-- 自分の画像（personal/ の画像を日替わりで1枚）を一番上の帯に出す。personal/ は GitHub に上げない -->
+  <div class="hero" hidden><img id="hero-img" alt=""></div>
   <div class="joshiki" aria-hidden="true"></div>
   <div class="wrap">
     <header>
@@ -41,6 +41,8 @@
   <script src="src/planner.js"></script>
   <script src="src/parser.js"></script>
   <script src="src/storage.js"></script>
+  <!-- 自分の画像の一覧（なくてもよい）。window.PERSONAL_IMAGES = ["a.jpg", ...] -->
+  <script src="personal/images.js"></script>
   <script src="src/app.js"></script>
 </body>
 </html>

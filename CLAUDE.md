@@ -35,7 +35,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 index.html        画面（タブ: 今日 / 週の進捗 / 月 / 週の設定）
 src/style.css     スタイル（歌舞伎のデザイン・犬のキャラクターの動き）
 src/mascot.svg    ブラウザのタブのアイコン（犬のキャラクターのふつうの顔）
-personal/         自分だけの画像（hero.jpg）。.gitignore で除外。なくても動く
+personal/         自分だけの画像と一覧 images.js（日替わりで帯に出す）。.gitignore で除外。なくても動く
 src/planner.js    計算ロジック（純粋関数のみ。DOM・localStorage に触らない）
 src/parser.js     PDCA の文章の読み取り（純粋関数のみ。F-11）
 src/storage.js    localStorage の読み書き、JSON 書き出し・読み込み
@@ -45,7 +45,7 @@ tests/            planner.js・parser.js・storage.js のテスト
 
 ### 不変条件
 
-- `index.html` を `file://` で直接開いて動くこと。そのため `<script type="module">` は使わない（file:// では読み込めない）。通常の `<script src>` で `planner.js → parser.js → storage.js → app.js` の順に読み込む。
+- `index.html` を `file://` で直接開いて動くこと。そのため `<script type="module">` は使わない（file:// では読み込めない）。通常の `<script src>` で `planner.js → parser.js → storage.js →（personal/images.js。なくてもよい）→ app.js` の順に読み込む。
 - `src/planner.js` はブラウザでは `window.Planner`、Node では `module.exports` で同じ関数を公開する（末尾で `typeof module !== "undefined"` を見て切り替える）。テストは `require("../src/planner.js")` で読み込む。`src/parser.js` も同じ形で、ブラウザでは `window.PlannerParser`。
 - 計算ルール（必要量・割り振り・判定）と文章の読み取りのルール（4.6）は `docs/requirements.md` が正。変えるときはドキュメントとテストも同時に直す。
 - localStorage のデータには `schemaVersion` を持たせ、形を変えるときは読み込み時に移行処理を書く（既存データを消さない）。
