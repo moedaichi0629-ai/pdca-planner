@@ -466,6 +466,38 @@
     };
   }
 
+  // ---------- F-17 今日の売上 ----------
+  // 売上は、その日の月の「売上」の目標（手で入れる目標）の実績として持つ。月タブの実績と同じもの
+  // 見つけ方: 単位が「円」の手で入れる目標のうち、名前に「売上」を含むもの → なければ単位が「円」のもの。なければ null
+  function salesGoalOf(goals) {
+    const yen = (goals || []).filter((g) => g && g.source === "manual" && String(g.unit ?? "").trim() === "円");
+    return yen.find((g) => String(g.name ?? "").includes("売上")) || yen[0] || null;
+  }
+
+  // 売上の目標がない月に作る目標
+  const newSalesGoal = (id) => ({ id, name: "売上", unit: "円", target: 0, minimum: null, stretch: null, source: "manual", categoryId: null, entries: [] });
+
+  // start〜end の日の売上の実績（日付の順）。各月の売上の目標から集める
+  function salesEntries(months, start, end) {
+    const out = [];
+    for (const [m, rec] of Object.entries(months || {})) {
+      const r = monthRange(m);
+      if (r.end < start || end < r.start) continue;
+      const g = salesGoalOf(rec?.goals);
+      for (const e of g?.entries || []) if (e.date >= start && e.date <= end) out.push(e);
+    }
+    return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }
+  const salesTotal = (months, start, end) => salesEntries(months, start, end).reduce((s, e) => s + num(e.qty), 0);
+
+  // 売上の金額の確認。問題があれば理由、なければ null
+  function validateSale(amount) {
+    const a = Number(amount);
+    if (amount === "" || amount === null || amount === undefined || !Number.isFinite(a) || a <= 0) return "金額を0より大きい数で入れてください。";
+    if (a > 100000000) return "金額は1億円までにしてください。";
+    return null;
+  }
+
   // ---------- F-16 犬のキャラクターの顔 ----------
   // 週の全体の判定から顔を選ぶ。予定通りのうち、進み具合が AHEAD_PACE 以上なら「予定より進んでいる」
   const AHEAD_PACE = 1.2;
@@ -783,6 +815,7 @@
     isDaily, perUnitMin, categoryOf, ratioTotal, validateCategory, guessCategory, goalCategoryDefault, dayBreakdown,
     validateExtra, dayOfWeek, weekdaysOf, hasWeekdays, weekdayDays, minDailyOf,
     AHEAD_PACE, mascotMood,
+    salesGoalOf, newSalesGoal, salesEntries, salesTotal, validateSale,
   };
 
   if (typeof module !== "undefined" && module.exports) {

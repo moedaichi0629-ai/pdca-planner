@@ -105,6 +105,7 @@
     weekDoneMsg: "", // 週を削除したあとに1回だけ出す
     hoursMsg: "",
     extraMsg: "", // 予定外にやったことを弾いた理由
+    saleMsg: "", // 売上を弾いた理由
     dataMsg: null, // { kind: "ok" | "error", text }
     importPending: null, // { data, name }
     hoursValue: null, // 検証で弾いた「使える時間」の入力をそのまま残す
@@ -265,6 +266,7 @@
           </div>
           <p class="small error">${esc(ui.hoursMsg)}</p>
         </div>
+        ${salesSection(date)}
         ${extrasSection(day)}
         ${dayNotesSection(day)}`;
     }
@@ -298,6 +300,7 @@
       <div>${rows}</div>
       ${skipHtml}
       ${extraHtml}
+      ${salesSection(date)}
       ${extrasSection(day)}
       ${dayNotesSection(day)}
       <div class="row between">
@@ -353,6 +356,34 @@
   }
 
   // F-04 予定外にやったこと（週の項目にないこと。例 セミナー 2時間）
+  // F-17 今日の売上。その日の月の「売上」の目標の実績として保存する（月タブの実績と同じもの）
+  function salesSection(date) {
+    const list = P.salesEntries(data.months, date, date);
+    const total = list.reduce((s, e) => s + P.num(e.qty), 0);
+    const goal = P.salesGoalOf(monthRec(P.monthOf(date)).goals);
+    const rows = list
+      .map((e) => {
+        const k = esc(e.id);
+        const armed = ui.armed === "sale:" + e.id;
+        return `<li><span class="memo">${esc(e.memo) || '<span class="muted">メモなし</span>'}</span><span class="num">${fmtNum(e.qty)}円</span>
+          <button type="button" class="btn danger${armed ? " armed" : ""}" data-act="del-sale" data-entry="${k}" data-date="${esc(date)}">${armed ? "もう一度押すと削除" : "削除"}</button></li>`;
+      })
+      .join("");
+    return `<div class="section sales">
+      <div class="row between"><h3>今日の売上</h3><span class="sales-total">合計 <b class="num">${fmtNum(total)}</b>円</span></div>
+      <p class="small muted">${goal
+        ? `月タブの「${esc(goal.name)}」の実績に入ります。`
+        : "月タブの「売上」の目標の実績に入ります（目標がまだなければ、最初に追加したときに作ります）。"}</p>
+      ${rows ? `<ul class="entries">${rows}</ul>` : ""}
+      <div class="sale-form">
+        <label class="f">金額<span class="unit-in"><input id="sale-amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例 5000">円</span></label>
+        <label class="f wide">メモ<input id="sale-memo" placeholder="例 ココナラ1件"></label>
+        <button type="button" class="btn end" data-act="add-sale">売上を記録する</button>
+      </div>
+      <p class="small error">${esc(ui.saleMsg)}</p>
+    </div>`;
+  }
+
   function extrasSection(day) {
     const list = day?.extras || [];
     const rows = list
@@ -432,6 +463,7 @@
     const ms = mascotState(w);
     return `<div class="row between"><h2>週の進捗</h2><span class="pill ${pr.overall.k}">全体：${pr.overall.label}</span></div>
       <div class="mascot-talk"><div class="mascot-big">${mascotSvg(ms.mood)}</div><p class="bubble">${esc(ms.text)}</p></div>
+      <div class="sales-week"><span>今週の売上</span><b><span class="num">${fmtNum(P.salesTotal(data.months, w.start, w.end))}</span>円</b></div>
       <div class="meter">
         <div><b>${pr.elapsed}/${pr.totalDays}日</b><span>経過した稼働日</span></div>
         <div><b>${fmtMin(pr.remainingMin)}</b><span>残りの作業時間</span></div>
@@ -1194,6 +1226,39 @@
       return;
     }
     if (act === "add-entry") return addEntry(el.dataset.goal);
+    if (act === "add-sale") {
+      const date = curWeek() ? activeDate(curWeek()) : todayStr();
+      const raw = $("#sale-amount").value;
+      const err = P.validateSale(raw);
+      if (err) {
+        ui.saleMsg = err;
+        render();
+        $("#sale-amount").focus();
+        return;
+      }
+      const rec = ensureMonth(P.monthOf(date));
+      let g = P.salesGoalOf(rec.goals);
+      if (!g) {
+        g = P.newSalesGoal(uid("g"));
+        rec.goals.push(g);
+      }
+      g.entries = g.entries || [];
+      g.entries.push({ id: uid("e"), date, qty: Math.round(Number(raw)), memo: $("#sale-memo").value.trim() });
+      ui.saleMsg = "";
+      persist();
+      render();
+      return;
+    }
+    if (act === "del-sale") {
+      const id = el.dataset.entry;
+      if (ui.armed !== "sale:" + id) return arm("sale:" + id);
+      ui.armed = null;
+      const g = P.salesGoalOf(ensureMonth(P.monthOf(el.dataset.date)).goals);
+      if (g) g.entries = (g.entries || []).filter((e) => e.id !== id);
+      persist();
+      render();
+      return;
+    }
     if (act === "del-entry") {
       const id = el.dataset.entry;
       if (ui.armed !== id) return arm(id);

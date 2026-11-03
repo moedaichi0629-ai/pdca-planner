@@ -254,6 +254,17 @@ textarea.bulk-text { min-height: 12em; font-size: .9rem; }
   .extra-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .extra-form .wide, .extra-form .btn { grid-column: 1 / -1; }
 }
+/* F-17 今日の売上 */
+.sales-total { font-size: .9rem; color: var(--muted); }
+.sales-total b { color: var(--ink); font-size: 1.15rem; }
+.sale-form { display: grid; grid-template-columns: minmax(9em, 1fr) minmax(0, 2fr) auto; gap: 8px; align-items: end; }
+.sale-form input { width: 100%; }
+@media (max-width: 560px) {
+  .sale-form { grid-template-columns: minmax(0, 1fr); }
+}
+.sales-week { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; background: var(--sunk); border-left: 4px solid var(--jo-kaki); border-radius: 8px; padding: 10px 14px; }
+.sales-week span { color: var(--muted); font-size: .85rem; }
+.sales-week b { font-size: 1.2rem; }
 .weekday-chips { gap: 4px; }
 .weekday-chips .chip { min-width: 2.4em; padding: 4px 8px; text-align: center; }
 .wd-list { display: flex; flex-direction: column; gap: 6px; }

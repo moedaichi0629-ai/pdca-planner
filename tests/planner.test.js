@@ -857,3 +857,33 @@ test("F-16 週の進捗の進み具合（pace）は、実績の時間 ÷ 終わ�
   assert.ok(Math.abs(pr.pace - 120 / (390 * 2 / 7)) < 1e-9);
   assert.equal(P.weekProgress(minDailyWeek(), "2026-11-02").pace, null); // まだ1日も経っていない
 });
+
+// ---------- F-17 今日の売上 ----------
+test("F-17 売上の目標: 単位が円の手で入れる目標のうち、名前に売上を含むもの → 円のもの", () => {
+  const g = (id, name, unit, source = "manual") => ({ id, name, unit, source, entries: [] });
+  assert.equal(P.salesGoalOf([g("a", "受注", "件"), g("b", "ココナラ収益", "円"), g("c", "売上", "円")]).id, "c");
+  assert.equal(P.salesGoalOf([g("a", "受注", "件"), g("b", "ココナラ収益", "円")]).id, "b");
+  assert.equal(P.salesGoalOf([g("a", "売上", "円", "weekly")]), null); // 週から集める目標は使わない
+  assert.equal(P.salesGoalOf([]), null);
+  assert.deepEqual(P.newSalesGoal("x"), { id: "x", name: "売上", unit: "円", target: 0, minimum: null, stretch: null, source: "manual", categoryId: null, entries: [] });
+});
+
+test("F-17 売上の合計: 月をまたぐ週でも、各月の売上の目標から日の範囲で集める", () => {
+  const sales = (entries) => ({ goals: [{ id: "s", name: "売上", unit: "円", source: "manual", entries }] });
+  const months = {
+    "2026-10": sales([{ id: "1", date: "2026-10-30", qty: 3000, memo: "" }, { id: "2", date: "2026-10-01", qty: 9000, memo: "" }]),
+    "2026-11": sales([{ id: "3", date: "2026-11-01", qty: 5000, memo: "ココナラ1件" }, { id: "4", date: "2026-11-02", qty: 1000, memo: "" }]),
+  };
+  assert.equal(P.salesTotal(months, "2026-10-26", "2026-11-01"), 8000);
+  assert.deepEqual(P.salesEntries(months, "2026-11-01", "2026-11-01").map((e) => e.id), ["3"]);
+  // 月の進捗（月タブ）にもそのまま入る
+  assert.equal(P.goalActual(months["2026-11"].goals[0], {}, "2026-11"), 6000);
+});
+
+test("F-17 売上の金額の確認", () => {
+  assert.equal(P.validateSale("5000"), null);
+  assert.ok(P.validateSale(""));
+  assert.ok(P.validateSale(0));
+  assert.ok(P.validateSale(-1));
+  assert.ok(P.validateSale(200000000));
+});
