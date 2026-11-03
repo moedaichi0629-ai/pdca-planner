@@ -330,23 +330,29 @@
         const it = im[x.itemId];
         const unit = esc(it.unit);
         let rest = "完了";
+        // F-15 1日の最低時間のある項目は、残りと1日あたりを時間で出す
+        const t = x.time;
+        const restQty = t ? `残り${fmtMin(t.remainingMin)}（${esc(x.remaining)}${unit}）` : `残り${esc(x.remaining)}${unit}`;
+        const perDay = t ? fmtMin(t.perDayMin) : `${esc(x.perDay)}${unit}`;
         if (x.remaining) {
           if (x.weekdayRest !== null) {
             const label = weekdayLabel(P.weekdaysOf(it));
             rest = x.weekdayRest
-              ? `残り${esc(x.remaining)}${unit} → ${x.weekdayRest > 1 ? `指定曜日（${label}）1回あたり` : `次の${label}曜日に`}${esc(x.perDay)}${unit}`
-              : `残り${esc(x.remaining)}${unit}（指定した曜日は過ぎました。次の稼働日にまとめて入れます）`;
+              ? `${restQty} → ${x.weekdayRest > 1 ? `指定曜日（${label}）1回あたり` : `次の${label}曜日に`}${perDay}`
+              : `${restQty}（指定した曜日は過ぎました。次の稼働日にまとめて入れます）`;
           } else {
             rest = pr.remDays
-              ? `残り${esc(x.remaining)}${unit} → 1日あたり${esc(x.perDay)}${unit}`
-              : `残り${esc(x.remaining)}${unit}（週の稼働日は終了）`;
+              ? `${restQty} → 1日あたり${perDay}`
+              : `${restQty}（週の稼働日は終了）`;
           }
         }
         return `<div class="prog">
           <div class="row between"><span class="title">${esc(it.name)}${x.weekdayRest !== null ? ` <span class="small muted">${esc(weekdayLabel(P.weekdaysOf(it)))}曜日</span>` : ""}</span><span class="pill ${x.status.k}">${x.status.label}</span></div>
           <div class="bar" role="img" aria-label="達成率${x.pct}%"><i style="width:${Math.min(100, x.pct)}%"></i>${x.expectedPct ? `<u style="left:calc(${x.expectedPct}% - 1px)"></u>` : ""}</div>
           <div class="row between small muted">
-            <span><span class="num">${esc(x.actual)}/${esc(x.target)}</span>${unit}（<span class="num">${x.pct}</span>%）</span>
+            <span>${t
+              ? `<span class="num">${fmtMin(t.doneMin)}/${fmtMin(t.targetMin)}</span>（<span class="num">${x.pct}</span>%）`
+              : `<span class="num">${esc(x.actual)}/${esc(x.target)}</span>${unit}（<span class="num">${x.pct}</span>%）`}</span>
             <span>${rest}</span>
           </div>
         </div>`;
@@ -508,7 +514,7 @@
     const minDailyField = daily
       ? ""
       : `<label class="f">1日の最低時間(分)<input id="minDailyMin-${k}" type="number" min="0" step="5" data-act="item" data-field="minDailyMin" data-item="${k}" value="${esc(it.minDailyMin)}" placeholder="なし"></label>
-        ${minD > 0 ? `<p class="small muted full">作業する日は毎日 ${fmtMin(minD)} 以上を先に入れます。1${esc(it.unit || "回")}を終えられない日は、途中まで（例 ${fmtNum(Math.round((minD / P.num(it.minutes)) * 100) / 100)}${esc(it.unit)}）を予定にします。</p>` : ""}`;
+        ${minD > 0 ? `<p class="small muted full">作業する日は毎日 ${fmtMin(minD)} 以上を先に入れます。1${esc(it.unit || "回")}を終えられない日は、途中まで（例 ${fmtNum(Math.round((minD / P.num(it.minutes)) * 1000) / 1000)}${esc(it.unit)}）を予定にします。</p>` : ""}`;
     const armed = ui.armed === it.id;
     return `<div class="item">
       <label class="f wide">やること<input id="name-${k}" data-act="item" data-field="name" data-item="${k}" value="${esc(it.name)}" placeholder="例 ココナラ商品の出品"></label>

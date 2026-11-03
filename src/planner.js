@@ -112,8 +112,8 @@
 
   // F-15 1日の最低時間（分）。毎日やる項目・1回の時間が0の項目には使わない（0 を返す）
   const minDailyOf = (it) => (isDaily(it) || num(it.minutes) <= 0 ? 0 : Math.max(0, num(it.minDailyMin)));
-  // 1日の最低時間のある項目は、時間（分）で割り振り、量は「分 ÷ 1回の時間」の小数第2位まで（1単位の途中まで）にする
-  const round2 = (v) => Math.round(v * 100) / 100;
+  // 1日の最低時間のある項目は、時間（分）で割り振り、量は「分 ÷ 1回の時間」の小数第3位まで（1単位の途中まで）にする
+  const roundQty = (v) => Math.round(v * 1000) / 1000;
 
   // 1単位あたりの時間（分）。毎日やる項目は「今かかっている時間 ÷ 1日にやる量」、それ以外は1回の時間
   const perUnitMin = (it) => (isDaily(it) ? Math.max(0, num(it.dailyMin)) / num(it.dailyQty) : Math.max(0, num(it.minutes)));
@@ -185,7 +185,7 @@
     for (const it of sortByPriority(week.items || [])) {
       const minD = minDailyOf(it);
       let remaining = Math.max(0, num(it.target) - sumLog(week, it.id, (d) => d < date));
-      if (minD > 0) remaining = round2(remaining);
+      if (minD > 0) remaining = roundQty(remaining);
       if (remaining <= 0) continue;
       if (isDaily(it)) {
         if (isOff) continue; // 休みの日は毎日やる項目を入れない
@@ -280,10 +280,10 @@
       if (e.needMin !== undefined) {
         // 量は分から出す。残りの量の時間をすべて入れたときは、残りの量そのもの
         const remMin = Math.round(e.remaining * per);
-        const qtyOf = (m) => (m >= remMin ? e.remaining : Math.min(e.remaining, round2(m / per)));
+        const qtyOf = (m) => (m >= remMin ? e.remaining : Math.min(e.remaining, roundQty(m / per)));
         if (e.min > 0) plan.push(row(e.it, qtyOf(e.min), e.min));
         const leftMin = e.needMin - e.min;
-        if (leftMin > 0) skipped.push(row(e.it, round2(qtyOf(e.needMin) - qtyOf(e.min)), leftMin));
+        if (leftMin > 0) skipped.push(row(e.it, roundQty(qtyOf(e.needMin) - qtyOf(e.min)), leftMin));
         continue;
       }
       if (e.qty > 0) plan.push(row(e.it, e.qty, e.qty * per));
@@ -405,7 +405,8 @@
       const target = num(it.target);
       const actual = sumLog(week, it.id, () => true);
       const per = perUnitMin(it);
-      const remaining = Math.max(0, target - actual);
+      const minD = minDailyOf(it);
+      const remaining = minD > 0 ? roundQty(Math.max(0, target - actual)) : Math.max(0, target - actual);
       targetMin += target * per;
       actualMin += Math.min(actual, target) * per;
       remainingMin += remaining * per;
@@ -423,6 +424,18 @@
         perDay = weekdayRest ? Math.ceil(remaining / weekdayRest) : remaining;
       }
       expectedMin += tot ? (target * per * el) / tot : 0;
+      // F-15 1日の最低時間のある項目は、時間でも出す（量 × 1回の時間）。1日あたりは最低時間を下回らない（残りの時間まで）
+      let time = null;
+      if (minD > 0) {
+        const remMin = Math.round(remaining * per);
+        const days = wdd.length ? weekdayRest : remDays;
+        time = {
+          targetMin: Math.round(target * per),
+          doneMin: Math.round(Math.min(actual, target) * per),
+          remainingMin: remMin,
+          perDayMin: days ? Math.min(remMin, Math.max(minD, Math.ceil(remMin / days))) : remMin,
+        };
+      }
       return {
         itemId: it.id,
         target,
@@ -431,6 +444,7 @@
         pct: target ? Math.round((actual / target) * 100) : 0,
         perDay,
         weekdayRest,
+        time,
         expectedPct: tot ? Math.min(100, (el / tot) * 100) : 0,
         status: judge(actual, target, el, tot),
       };

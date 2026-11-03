@@ -776,8 +776,8 @@ const rowOf = (rows, id) => rows.find((x) => x.itemId === id);
 test("4.1 1日の最低時間: 優先度が低くても最低時間は先に取り、1件の途中まで（量は小数）を予定に入れる", () => {
   const r = P.planDay(minDailyWeek(), "2026-11-02", 1);
   assert.deepEqual(rowOf(r.plan, "sell"), { itemId: "sell", qty: 1, min: 30 });
-  assert.deepEqual(rowOf(r.plan, "tool"), { itemId: "tool", qty: 0.17, min: 30 });
-  assert.deepEqual(rowOf(r.skipped, "tool"), { itemId: "tool", qty: 0.83, min: 150 });
+  assert.deepEqual(rowOf(r.plan, "tool"), { itemId: "tool", qty: 0.167, min: 30 });
+  assert.deepEqual(rowOf(r.skipped, "tool"), { itemId: "tool", qty: 0.833, min: 150 });
 });
 
 test("4.1 1日の最低時間: 時間が余れば、最低時間より多く（最大で残り全部）入れる", () => {
@@ -809,7 +809,7 @@ test("4.2 1日の最低時間: カテゴリーがあれば、最低時間はそ�
 test("4.1 1日の最低時間: 曜日指定があれば指定した曜日だけ。休みの日・毎日やる項目には使わない", () => {
   const w = minDailyWeek({ tool: { weekdays: [6] } });
   assert.equal(rowOf(P.planDay(w, "2026-11-02", 1).plan, "tool"), undefined);
-  assert.deepEqual(rowOf(P.planDay(w, "2026-11-07", 1).plan, "tool"), { itemId: "tool", qty: 0.17, min: 30 });
+  assert.deepEqual(rowOf(P.planDay(w, "2026-11-07", 1).plan, "tool"), { itemId: "tool", qty: 0.167, min: 30 });
   // 休みの日は先に取らない（優先度順のまま）
   const off = minDailyWeek({ offDays: ["2026-11-02"], tool: { target: 1 } });
   off.items[0].target = 14; // 出品 2件/日 = 60分
@@ -824,4 +824,14 @@ test("4.6 まとめて登録: 1日の最低時間を引き継ぐ", () => {
   assert.equal(P.itemDefaults(weeks, "ツール開発", "2026-11-02", [], []).minDailyMin, 30);
   const rows = P.normalizeImportRows([{ include: true, name: "ツール開発", target: 1, minutes: 180, priority: 3, minDailyMin: 30 }], "week", []);
   assert.equal(rows.rows[0].minDailyMin, 30);
+});
+
+test("4.3 1日の最低時間: 週の進捗は時間でも出し、1日あたりは最低時間を下回らない", () => {
+  const days = { "2026-11-02": { closed: true, log: { tool: { qty: 0.167, min: 30 } } } };
+  const x = P.weekProgress(minDailyWeek({ days }), "2026-11-03").items.find((i) => i.itemId === "tool");
+  assert.equal(x.remaining, 0.833);
+  assert.deepEqual(x.time, { targetMin: 180, doneMin: 30, remainingMin: 150, perDayMin: 30 }); // 150 ÷ 6日 = 25 → 最低30
+  const late = P.weekProgress(minDailyWeek({ days }), "2026-11-07").items.find((i) => i.itemId === "tool");
+  assert.equal(late.time.perDayMin, 75); // 残り2日: ceil(150 ÷ 2)
+  assert.equal(P.weekProgress(minDailyWeek(), "2026-11-03").items.find((i) => i.itemId === "sell").time, null);
 });
