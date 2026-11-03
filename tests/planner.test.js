@@ -575,6 +575,9 @@ test("4.7 今日の内訳: 予定は作った時点の区分、実績は予定�
     ["other", null, 10, 15],
   ]);
   assert.deepEqual([b.total, b.free, b.hasActual, b.dailyShort], [180, 70, true, false]);
+  // 毎日することは項目ごとにも出す
+  assert.deepEqual(b.segments[0].items, [{ itemId: "daily", name: "投稿", unit: "", qty: 3, planMin: 30, actualMin: 40 }]);
+  assert.equal("items" in b.segments[1], false);
 });
 
 test("F-13 カテゴリーの確認と、名前からカテゴリーを当てる（長い名前を優先）", () => {

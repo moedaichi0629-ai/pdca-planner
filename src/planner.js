@@ -225,10 +225,22 @@
     const keyOf = (daily, categoryId) => (daily ? "daily" : categoryOf({ categoryId }, cats) || "other");
     const plannedKey = {};
     const planMin = {};
+    // 毎日することは項目ごとにも出す（予定の順、そのあとに予定外にやった毎日やる項目）
+    const dailyItems = [];
+    const dailyRow = (id) => {
+      let r = dailyItems.find((x) => x.itemId === id);
+      if (!r) dailyItems.push((r = { itemId: id, name: im[id]?.name ?? "", unit: im[id]?.unit ?? "", qty: 0, planMin: 0, actualMin: 0 }));
+      return r;
+    };
     for (const p of day?.plan || []) {
       const k = keyOf(p.daily, p.categoryId);
       plannedKey[p.itemId] = k;
       planMin[k] = (planMin[k] || 0) + num(p.min);
+      if (k === "daily") {
+        const r = dailyRow(p.itemId);
+        r.qty += num(p.qty);
+        r.planMin += num(p.min);
+      }
     }
     const actualMin = {};
     for (const [id, l] of Object.entries(day?.log || {})) {
@@ -236,11 +248,12 @@
       if (!it && !plannedKey[id]) continue;
       const k = plannedKey[id] || keyOf(isDaily(it), it.categoryId);
       actualMin[k] = (actualMin[k] || 0) + num(l.min);
+      if (k === "daily") dailyRow(id).actualMin += num(l.min);
     }
     const budgetOf = Object.fromEntries((day?.alloc?.budgets || []).map((b) => [b.categoryId, num(b.min)]));
     const seg = (key, kind, name, index, budget) => ({ key, kind, name, index, budget, planMin: planMin[key] || 0, actualMin: actualMin[key] || 0 });
     const segments = [];
-    if (planMin.daily || actualMin.daily) segments.push(seg("daily", "daily", "毎日すること", -1, num(day?.alloc?.dailyMin)));
+    if (planMin.daily || actualMin.daily || dailyItems.length) segments.push({ ...seg("daily", "daily", "毎日すること", -1, num(day?.alloc?.dailyMin)), items: dailyItems });
     cats.forEach((c, i) => segments.push(seg(c.id, "category", c.name, i, budgetOf[c.id] ?? null)));
     if (planMin.other || actualMin.other) segments.push(seg("other", "other", "その他", -1, null));
     const total = Math.max(0, Math.round(num(day?.hours) * 60));

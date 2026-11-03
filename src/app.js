@@ -240,7 +240,11 @@
       .map((x) => {
         const budget = x.budget !== null && x.kind === "category" ? `<span class="muted">（割り当て ${fmtMin(x.budget)}）</span>` : "";
         const actual = b.hasActual ? `<span>→ 実際 <b>${fmtMin(x.actualMin)}</b></span>` : "";
-        return `<li><span class="sw ${cls(x)}"></span><span class="bd-name">${esc(x.name)}</span><span class="bd-val"><span>予定 <b>${fmtMin(x.planMin)}</b></span>${budget}${actual}</span></li>`;
+        // 毎日することは、その中の項目も並べる
+        const sub = (x.items || [])
+          .map((d) => `<li><span class="bd-name">${esc(d.name) || "（削除した項目）"}${d.qty ? ` <span class="muted">${fmtNum(d.qty)}${esc(d.unit)}</span>` : ""}</span><span class="bd-val"><span>予定 <b>${fmtMin(d.planMin)}</b></span>${b.hasActual ? `<span>→ 実際 <b>${fmtMin(d.actualMin)}</b></span>` : ""}</span></li>`)
+          .join("");
+        return `<li><span class="sw ${cls(x)}"></span><span class="bd-name">${esc(x.name)}</span><span class="bd-val"><span>予定 <b>${fmtMin(x.planMin)}</b></span>${budget}${actual}</span>${sub ? `<ul class="bd-sub">${sub}</ul>` : ""}</li>`;
       })
       .join("");
     return `<div class="stack breakdown">
