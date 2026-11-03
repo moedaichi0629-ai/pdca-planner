@@ -177,6 +177,13 @@ test("v5 のデータは読み込まずに退避する", () => {
   assert.equal([...st.map.keys()].some((k) => k.startsWith(`${S.KEY}.backup.`)), true);
 });
 
+test("予定外にやったこと（extras）の形が違うデータは読み込まない。なくてもよい", () => {
+  const week = (days) => ({ schemaVersion: 4, settings: {}, categories: [], months: {}, weeks: { w_a: { ...sampleWeek, days } } });
+  assert.equal(S.parseData(JSON.stringify(week({ "2026-10-27": { extras: "x" } }))).ok, false);
+  assert.equal(S.parseData(JSON.stringify(week({ "2026-10-27": { extras: [{ id: "x1", name: "セミナー", min: 120, categoryId: null }] } }))).ok, true);
+  assert.equal(S.parseData(JSON.stringify(week({ "2026-10-27": { hours: 3 } }))).ok, true);
+});
+
 test("months の形が違うデータは読み込まない", () => {
   assert.equal(S.parseData(JSON.stringify({ schemaVersion: 2, weeks: {}, months: [] })).ok, false);
   assert.equal(S.parseData(JSON.stringify({ schemaVersion: 2, weeks: {}, months: { "10月": {} } })).ok, false);

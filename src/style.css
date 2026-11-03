@@ -203,6 +203,14 @@ textarea.bulk-text { min-height: 12em; font-size: .9rem; }
 .bd-list .bd-val { display: inline-flex; flex-wrap: wrap; gap: 0 6px; justify-content: flex-end; }
 .bd-list .bd-val > span { white-space: nowrap; }
 .bd-list .bd-val b { font-weight: 700; }
+.extra-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(9em, 1.2fr) auto; gap: 8px; align-items: end; }
+.extra-form input, .extra-form select { width: 100%; }
+.unit-in { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: .9rem; white-space: nowrap; }
+.unit-in input { min-width: 0; }
+@media (max-width: 560px) {
+  .extra-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .extra-form .wide, .extra-form .btn { grid-column: 1 / -1; }
+}
 .bd-sub { list-style: none; flex-basis: 100%; margin: 2px 0 4px 20px; padding: 0 0 0 10px; border-left: 2px solid var(--seg-daily); display: flex; flex-direction: column; gap: 2px; font-size: .8rem; }
 .bd-sub .bd-name { font-weight: 400; }
 @media (max-width: 560px) {

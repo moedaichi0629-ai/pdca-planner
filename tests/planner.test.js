@@ -100,8 +100,8 @@ test("その日の合計: 予定の時間・実績の時間・完了数", () => 
     plan: [{ itemId: "sell", qty: 1, min: 60 }, { itemId: "threads", qty: 5, min: 50 }],
     log: { sell: { qty: 1, min: 75, done: true }, study: { qty: 1, min: 40 }, threads: { qty: "", min: "" } },
   };
-  assert.deepEqual(P.daySummary(day), { planMin: 110, actualMin: 115, doneCount: 1, planCount: 2 });
-  assert.deepEqual(P.daySummary(undefined), { planMin: 0, actualMin: 0, doneCount: 0, planCount: 0 });
+  assert.deepEqual(P.daySummary(day), { planMin: 110, actualMin: 115, extraMin: 0, doneCount: 1, planCount: 2 });
+  assert.deepEqual(P.daySummary(undefined), { planMin: 0, actualMin: 0, extraMin: 0, doneCount: 0, planCount: 0 });
 });
 
 // 週 10/26〜11/1 を 10/27〜10/30 に短くした。10/26 と 10/31 の実績はデータに残るが数えない
@@ -611,4 +611,33 @@ test("4.6 まとめて登録: 前の週の同じ名前の項目からカテゴ�
   const rows = P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: "3", dailyMin: "30" }], "week", CATS);
   assert.deepEqual(rows.rows[0], { name: "投稿", unit: "", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30 });
   assert.match(P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: "0" }], "week", CATS).error, /1日にやる量/);
+});
+
+test("F-04 予定外にやったこと: 実際の時間と内訳に入り、週の進み具合には入らない", () => {
+  const day = {
+    hours: 3,
+    plan: [{ itemId: "coco", qty: 1, min: 60, categoryId: "c_coco" }],
+    log: { coco: { qty: 1, min: 50, done: true } },
+    extras: [
+      { id: "x1", name: "セミナー", min: 120, categoryId: "c_study" },
+      { id: "x2", name: "打ち合わせ", min: 30, categoryId: null },
+    ],
+  };
+  const sum = P.daySummary(day);
+  assert.deepEqual([sum.planMin, sum.actualMin, sum.extraMin], [60, 200, 150]);
+  const b = P.dayBreakdown(day, [{ id: "coco", name: "出品", categoryId: "c_coco" }], CATS);
+  const actual = Object.fromEntries(b.segments.map((s) => [s.key, s.actualMin]));
+  assert.deepEqual(actual, { c_coco: 50, c_th: 0, c_study: 120, other: 30 });
+  // 週の進み具合（項目の実績）には入らない
+  const w = catWeek([{ id: "coco", name: "出品", unit: "件", target: 7, minutes: 60, priority: 1 }]);
+  w.days = { "2026-11-02": day };
+  assert.equal(P.weekProgress(w, "2026-11-03").items[0].actual, 1);
+});
+
+test("F-04 予定外にやったことの確認", () => {
+  assert.equal(P.validateExtra("セミナー", 120), null);
+  assert.match(P.validateExtra(" ", 120), /名前/);
+  assert.match(P.validateExtra("セミナー", ""), /時間/);
+  assert.match(P.validateExtra("セミナー", 0), /時間/);
+  assert.match(P.validateExtra("セミナー", 24 * 60 + 1), /24時間/);
 });

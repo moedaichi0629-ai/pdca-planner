@@ -41,6 +41,7 @@
     weekMsg: "",
     weekDoneMsg: "", // 週を削除したあとに1回だけ出す
     hoursMsg: "",
+    extraMsg: "", // 予定外にやったことを弾いた理由
     dataMsg: null, // { kind: "ok" | "error", text }
     importPending: null, // { data, name }
     hoursValue: null, // 検証で弾いた「使える時間」の入力をそのまま残す
@@ -184,7 +185,8 @@
             <button type="button" class="btn end" data-act="make-plan">予定を作る</button>
           </div>
           <p class="small error">${esc(ui.hoursMsg)}</p>
-        </div>`;
+        </div>
+        ${extrasSection(day)}`;
     }
 
     const log = day.log || {};
@@ -202,7 +204,7 @@
     const plannedIds = new Set(day.plan.map((x) => x.itemId));
     const extra = items(w).filter((i) => !plannedIds.has(i.id));
     const extraHtml = extra.length
-      ? `<details${extra.some((i) => log[i.id]) ? " open" : ""}><summary>予定外にやった分を記録する</summary><div>${extra.map((i) => taskRow(i, null, log[i.id])).join("")}</div></details>`
+      ? `<details${extra.some((i) => log[i.id]) ? " open" : ""}><summary>週の項目で予定外にやった分を記録する</summary><div>${extra.map((i) => taskRow(i, null, log[i.id])).join("")}</div></details>`
       : "";
 
     return `<div class="chips">${chips}</div>
@@ -216,6 +218,7 @@
       <div>${rows}</div>
       ${skipHtml}
       ${extraHtml}
+      ${extrasSection(day)}
       <div class="row between">
         <span class="small muted">完了 <span class="num">${sum.doneCount}/${sum.planCount}</span> 項目</span>
         <button type="button" class="btn${day.closed ? " ghost" : ""}" data-act="close-day">${day.closed ? "締めを取り消す" : "この日を締める"}</button>
@@ -252,6 +255,31 @@
       <div class="stackbar" role="img" aria-label="${esc(label)}">${bar}</div>
       <ul class="bd-list">${rows}<li><span class="sw free"></span><span class="bd-name">余り</span><span class="bd-val"><b>${fmtMin(b.free)}</b></span></li></ul>
       ${b.dailyShort ? `<p class="warn-text">毎日することだけで時間が足りません。入らなかった分は下の「今日は入らなかった」に出しています。</p>` : ""}
+    </div>`;
+  }
+
+  // F-04 予定外にやったこと（週の項目にないこと。例 セミナー 2時間）
+  function extrasSection(day) {
+    const list = day?.extras || [];
+    const rows = list
+      .map((e) => {
+        const k = esc(e.id);
+        const armed = ui.armed === "extra:" + e.id;
+        return `<li><span class="memo"><b>${esc(e.name)}</b> <span class="small muted">${esc(categoryName(P.categoryOf(e, cats())))}</span></span><span class="num">${fmtMin(P.num(e.min))}</span>
+          <button type="button" class="btn danger${armed ? " armed" : ""}" data-act="del-extra" data-extra="${k}">${armed ? "もう一度押すと削除" : "削除"}</button></li>`;
+      })
+      .join("");
+    return `<div class="section">
+      <h3>予定外にやったこと</h3>
+      <p class="small muted">セミナーや打ち合わせなど、週の項目にないことに使った時間を記録します。「実際にかかった時間」と今日の内訳には入りますが、週の目標の進み具合には入りません。</p>
+      ${rows ? `<ul class="entries">${rows}</ul>` : ""}
+      <div class="extra-form">
+        <label class="f wide">やったこと<input id="extra-name" placeholder="例 セミナー"></label>
+        <label class="f">かかった時間<span class="unit-in"><input id="extra-hours" type="number" min="0.25" max="24" step="0.25" inputmode="decimal" placeholder="例 2">時間</span></label>
+        ${cats().length ? `<label class="f">カテゴリー${categorySelect('id="extra-category"', null)}</label>` : ""}
+        <button type="button" class="btn ghost end" data-act="add-extra">予定外にやったことを追加</button>
+      </div>
+      <p class="small error">${esc(ui.extraMsg)}</p>
     </div>`;
   }
 
@@ -932,7 +960,7 @@
 
     if (act === "dismiss-notice") { ui.notice = null; render(); return; }
     if (act === "goto-setup") { ui.tab = "setup"; render(); return; }
-    if (act === "pick-date") { ui.date = el.dataset.date; ui.hoursMsg = ""; render(); return; }
+    if (act === "pick-date") { ui.date = el.dataset.date; ui.hoursMsg = ""; ui.extraMsg = ""; render(); return; }
     if (act === "create-week") return createWeek(w);
     if (act === "export") {
       S.exportToFile(data, todayStr());
@@ -1023,6 +1051,37 @@
     }
     if (!w) return;
 
+    if (act === "add-extra") {
+      const name = $("#extra-name").value.trim();
+      const raw = $("#extra-hours").value;
+      const min = raw === "" ? "" : Math.round(Number(raw) * 60);
+      const err = P.validateExtra(name, min);
+      if (err) {
+        ui.extraMsg = err;
+        render();
+        // 入れた値は残す
+        $("#extra-name").value = name;
+        $("#extra-hours").value = raw;
+        return;
+      }
+      const day = touchDay(w, activeDate(w));
+      day.extras = day.extras || [];
+      day.extras.push({ id: uid("x"), name, min, categoryId: P.categoryOf({ categoryId: $("#extra-category")?.value }, cats()) });
+      ui.extraMsg = "";
+      persist();
+      render();
+      return;
+    }
+    if (act === "del-extra") {
+      const id = el.dataset.extra;
+      if (ui.armed !== "extra:" + id) return arm("extra:" + id);
+      ui.armed = null;
+      const day = w.days?.[activeDate(w)];
+      if (day) day.extras = (day.extras || []).filter((e) => e.id !== id);
+      persist();
+      render();
+      return;
+    }
     if (act === "make-plan") {
       makePlan(w);
     } else if (act === "replan") {

@@ -59,12 +59,17 @@
   }
 
   // その日の予定・実績の合計
+  // 予定外にやったこと（週の項目にないこと）の時間の合計
+  const extrasMin = (day) => (day?.extras || []).reduce((s, e) => s + num(e.min), 0);
+
   function daySummary(day) {
     const plan = day?.plan || [];
     const log = day?.log || {};
     return {
       planMin: plan.reduce((s, x) => s + num(x.min), 0),
-      actualMin: Object.values(log).reduce((s, l) => s + num(l.min), 0),
+      // 実際の時間には、予定外にやったこと（セミナーなど）の時間も入れる
+      actualMin: Object.values(log).reduce((s, l) => s + num(l.min), 0) + extrasMin(day),
+      extraMin: extrasMin(day),
       doneCount: plan.filter((x) => log[x.itemId]?.done).length,
       planCount: plan.length,
     };
@@ -101,6 +106,15 @@
   function categoryOf(x, categories) {
     const id = x?.categoryId;
     return id && (categories || []).some((c) => c.id === id) ? id : null;
+  }
+
+  // F-04 予定外にやったことの確認。問題があれば理由、なければ null。min は分
+  function validateExtra(name, min) {
+    if (!String(name ?? "").trim()) return "やったことの名前を入れてください（例 セミナー）。";
+    const m = Number(min);
+    if (min === "" || min === null || min === undefined || !Number.isFinite(m) || m <= 0) return "かかった時間を0より大きい数で入れてください。";
+    if (m > 24 * 60) return "かかった時間は24時間までにしてください。";
+    return null;
   }
 
   // 割合の合計（%）
@@ -249,6 +263,11 @@
       const k = plannedKey[id] || keyOf(isDaily(it), it.categoryId);
       actualMin[k] = (actualMin[k] || 0) + num(l.min);
       if (k === "daily") dailyRow(id).actualMin += num(l.min);
+    }
+    // 予定外にやったことは、選んだカテゴリー（未選択は「その他」）の実際の時間に入れる
+    for (const e of day?.extras || []) {
+      const k = categoryOf(e, cats) || "other";
+      actualMin[k] = (actualMin[k] || 0) + num(e.min);
     }
     const budgetOf = Object.fromEntries((day?.alloc?.budgets || []).map((b) => [b.categoryId, num(b.min)]));
     const seg = (key, kind, name, index, budget) => ({ key, kind, name, index, budget, planMin: planMin[key] || 0, actualMin: actualMin[key] || 0 });
@@ -626,6 +645,7 @@
     monthProgress, monthCheckpoints, validateMonthEntry, copyMonthGoals,
     itemDefaults, goalSourceDefault, findWeekByRange, normalizeImportRows, mergeMonthGoals, mergeWeekItems,
     isDaily, perUnitMin, categoryOf, ratioTotal, validateCategory, guessCategory, goalCategoryDefault, dayBreakdown,
+    validateExtra,
   };
 
   if (typeof module !== "undefined" && module.exports) {
