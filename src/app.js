@@ -93,6 +93,14 @@
       .map((c) => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`)
       .join("")}</select>`;
   }
+  // F-14 曜日の選択（月〜日の順に並べる）。data 属性は呼び出し側で渡す
+  const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  function weekdayPicker(selected, attrs) {
+    return `<div class="chips weekday-chips" role="group" aria-label="やる曜日">${WEEKDAY_ORDER.map(
+      (d) => `<button type="button" class="chip" aria-pressed="${selected.includes(d)}" ${attrs} data-dow="${d}">${WD[d]}</button>`
+    ).join("")}</div>`;
+  }
+  const weekdayLabel = (days) => WEEKDAY_ORDER.filter((d) => days.includes(d)).map((d) => WD[d]).join("・");
   const categoryName = (id) => cats().find((c) => c.id === id)?.name || "その他";
   // カテゴリーの色（並び順で6色をくり返す）
   const colorClass = (index) => `c${((index % 6) + 6) % 6}`;
@@ -308,13 +316,20 @@
         const unit = esc(it.unit);
         let rest = "完了";
         if (x.remaining) {
-          rest = pr.remDays
-            ? `残り${esc(x.remaining)}${unit} → 1日あたり${esc(x.perDay)}${unit}`
-            : `残り${esc(x.remaining)}${unit}（週の稼働日は終了）`;
+          if (x.weekdayRest !== null) {
+            const label = weekdayLabel(P.weekdaysOf(it));
+            rest = x.weekdayRest
+              ? `残り${esc(x.remaining)}${unit} → ${x.weekdayRest > 1 ? `指定曜日（${label}）1回あたり` : `次の${label}曜日に`}${esc(x.perDay)}${unit}`
+              : `残り${esc(x.remaining)}${unit}（指定した曜日は過ぎました。次の稼働日にまとめて入れます）`;
+          } else {
+            rest = pr.remDays
+              ? `残り${esc(x.remaining)}${unit} → 1日あたり${esc(x.perDay)}${unit}`
+              : `残り${esc(x.remaining)}${unit}（週の稼働日は終了）`;
+          }
         }
         return `<div class="prog">
-          <div class="row between"><span class="title">${esc(it.name)}</span><span class="pill ${x.status.k}">${x.status.label}</span></div>
-          <div class="bar" role="img" aria-label="達成率${x.pct}%"><i style="width:${Math.min(100, x.pct)}%"></i>${pr.elapsed ? `<u style="left:calc(${pr.expectedPct}% - 1px)"></u>` : ""}</div>
+          <div class="row between"><span class="title">${esc(it.name)}${x.weekdayRest !== null ? ` <span class="small muted">${esc(weekdayLabel(P.weekdaysOf(it)))}曜日</span>` : ""}</span><span class="pill ${x.status.k}">${x.status.label}</span></div>
+          <div class="bar" role="img" aria-label="達成率${x.pct}%"><i style="width:${Math.min(100, x.pct)}%"></i>${x.expectedPct ? `<u style="left:calc(${x.expectedPct}% - 1px)"></u>` : ""}</div>
           <div class="row between small muted">
             <span><span class="num">${esc(x.actual)}/${esc(x.target)}</span>${unit}（<span class="num">${x.pct}</span>%）</span>
             <span>${rest}</span>
@@ -329,7 +344,7 @@
         <div><b>${pr.remDays ? fmtMin(pr.needMinPerDay) : "-"}</b><span>1日あたり必要</span></div>
       </div>
       <div>${rows}</div>
-      <p class="note">判定は「実績 ÷ 今の時点で終わっているはずの量」で出しています。100%以上で予定通り、80〜99%で遅れ気味、80%未満で遅れです。終わっているはずの量は、締めた日と過ぎた日の数で計算します（バーの縦線）。全体の判定は、各項目を作業時間の重みで合わせたものです。</p>`;
+      <p class="note">判定は「実績 ÷ 今の時点で終わっているはずの量」で出しています。100%以上で予定通り、80〜99%で遅れ気味、80%未満で遅れです。終わっているはずの量は、締めた日と過ぎた日の数で計算します（バーの縦線）。曜日を指定した項目は、指定した曜日の数で計算します。全体の判定は、各項目を作業時間の重みで合わせたものです。</p>`;
   }
 
   function setupView(w) {
@@ -382,6 +397,7 @@
       </div>
       <p class="small error">${esc(ui.weekMsg)}</p>
       <div class="stack"><h3>作業する日（押すと休みの日に切り替わります）</h3><div class="chips">${offChips}</div></div>
+      ${weekdaySection(w)}
       ${categoriesSection()}
       <div class="stack">
         <div class="row between"><h3>週の目標</h3><button type="button" class="btn ghost" data-act="add-item">項目を追加</button></div>
@@ -393,6 +409,33 @@
       ${deleteBox}
       <details${ui.createMsg ? " open" : ""}><summary>新しい週を作る</summary><div style="padding-top:10px">${createForm}</div></details>
       ${dataSection()}`;
+  }
+
+  // F-14 曜日を決めてやること（作業する日の下）。毎日やる項目以外の項目ごとに、やる曜日を選ぶ
+  function weekdaySection(w) {
+    const list = items(w).filter((it) => !it.daily);
+    const rows = list
+      .map((it) => {
+        const k = esc(it.id);
+        const wds = P.weekdaysOf(it);
+        const none = wds.length && !P.weekdayDays(w, it).length;
+        const note = !wds.length
+          ? "曜日なし（毎日に分けて入れます）"
+          : none
+            ? "この週には指定した曜日の稼働日がありません。残りは稼働日にまとめて入れます。"
+            : `${weekdayLabel(wds)}曜日に入れます${wds.length > 1 ? "（残りを指定した曜日で分けます）" : "（残りをまとめて入れます）"}`;
+        return `<div class="wd-row">
+          <span class="wd-name">${esc(it.name) || "（名前なし）"}</span>
+          ${weekdayPicker(wds, `data-act="toggle-weekday" data-item="${k}"`)}
+          <span class="small ${none ? "warn-text" : "muted"} wd-note">${note}</span>
+        </div>`;
+      })
+      .join("");
+    return `<div class="stack">
+      <h3>曜日を決めてやること</h3>
+      <p class="small muted">まとめて作る項目（例：Threads の投稿を日曜に1週間分作る）は、やる曜日を押して選んでください。2つ以上選べます。指定した曜日を過ぎて残っていたら、次の稼働日にまとめて入れます。毎日やる項目はここに出ません。</p>
+      ${rows ? `<div class="wd-list">${rows}</div>` : `<p class="note">まだ項目がありません。下の「週の目標」で項目を登録すると、ここで曜日を選べます。</p>`}
+    </div>`;
   }
 
   // F-13 カテゴリーと時間の割合（全体で1つ）
@@ -735,7 +778,9 @@
           .join("")}</select></label>
         <label class="f">カテゴリー${categorySelect(attrs("categoryId"), r.categoryId)}</label>
         <label class="row small daily-check"><input type="checkbox" ${attrs("daily")}${r.daily ? " checked" : ""}>毎日やる</label>
-        ${r.daily ? `${numField("dailyQty", "1日にやる量")}${numField("dailyMin", "今かかっている時間(分)")}` : ""}`;
+        ${r.daily
+          ? `${numField("dailyQty", "1日にやる量")}${numField("dailyMin", "今かかっている時間(分)")}`
+          : `<div class="weekday-pick bulk-wd"><span class="small muted">やる曜日（選ばなければ毎日に分ける）</span>${weekdayPicker(P.weekdaysOf({ weekdays: r.weekdays }), `data-act="bulk-weekday" data-idx="${i}"`)}</div>`}`;
     return `<div class="bulk-row${r.include ? "" : " skip-row"}">
       <label class="row small bulk-check"><input type="checkbox" ${attrs("include")}${r.include ? " checked" : ""}>登録する</label>
       <label class="f wide">名前<input ${attrs("name")} value="${esc(r.name)}"></label>
@@ -971,6 +1016,15 @@
     if (act === "import") return startImport();
     if (act === "import-confirm") return confirmImport();
     if (act === "bulk-read") return bulkRead(el.dataset.scope);
+    if (act === "bulk-weekday") {
+      const row = ui.bulk.week.draft?.rows[Number(el.dataset.idx)];
+      if (!row) return;
+      const d = Number(el.dataset.dow);
+      const cur = P.weekdaysOf({ weekdays: row.weekdays });
+      row.weekdays = (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]).sort();
+      render();
+      return;
+    }
     if (act === "bulk-apply") return bulkApply(el.dataset.scope);
     if (act === "bulk-cancel") { ui.bulk[el.dataset.scope].draft = null; render(); return; }
     if (act === "import-cancel") { ui.importPending = null; ui.dataMsg = { kind: "ok", text: "読み込みをやめました。今のデータはそのままです。" }; render(); return; }
@@ -1102,7 +1156,7 @@
       persist();
       render();
     } else if (act === "add-item") {
-      const it = { id: uid("i"), name: "", unit: "件", target: 1, minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null };
+      const it = { id: uid("i"), name: "", unit: "件", target: 1, minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [] };
       items(w).push(it);
       persist();
       render();
@@ -1138,6 +1192,14 @@
       persist();
       render();
       ui.weekDoneMsg = "";
+    } else if (act === "toggle-weekday") {
+      const it = items(w).find((i) => i.id === el.dataset.item);
+      if (!it) return;
+      const d = Number(el.dataset.dow);
+      const cur = P.weekdaysOf(it);
+      it.weekdays = (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]).sort();
+      persist();
+      render();
     } else if (act === "apply-avg") {
       const it = items(w).find((i) => i.id === el.dataset.item);
       const avg = it && P.avgMinutesPerUnit(data.weeks, it.name);

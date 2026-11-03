@@ -99,6 +99,17 @@
   // 毎日やる項目か（「1日にやる量」が0より大きいときだけ毎日やる項目として扱う）
   const isDaily = (it) => !!it.daily && num(it.dailyQty) > 0;
 
+  // F-14 曜日指定。曜日は 0（日）〜6（土）。毎日やる項目には使わない
+  const dayOfWeek = (date) => parseDate(date).getDay();
+  const weekdaysOf = (it) =>
+    isDaily(it) || !Array.isArray(it.weekdays) ? [] : [...new Set(it.weekdays.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))];
+  const hasWeekdays = (it) => weekdaysOf(it).length > 0;
+  // 週の稼働日のうち、指定した曜日の日
+  function weekdayDays(week, it) {
+    const wds = weekdaysOf(it);
+    return workdays(week).filter((d) => wds.includes(dayOfWeek(d)));
+  }
+
   // 1単位あたりの時間（分）。毎日やる項目は「今かかっている時間 ÷ 1日にやる量」、それ以外は1回の時間
   const perUnitMin = (it) => (isDaily(it) ? Math.max(0, num(it.dailyMin)) / num(it.dailyQty) : Math.max(0, num(it.minutes)));
 
@@ -186,7 +197,16 @@
         if (qty < need) skipped.push(row(it, need - qty, Math.round(per * (need - qty)), true));
         continue;
       }
-      entries.push({ it, need: Math.ceil(remaining / remDays), qty: 0 });
+      let need = Math.ceil(remaining / remDays);
+      if (hasWeekdays(it)) {
+        // 指定した曜日の日だけ、残りを残りの指定曜日の数で分ける。指定曜日がまだ先なら今日は入れない。
+        // 指定曜日がもうない（過ぎた・休みの日に当たった）ときは、残りを今日まとめて入れる
+        const future = weekdayDays(week, it).filter((d) => d >= date);
+        if (future.includes(date)) need = Math.ceil(remaining / future.length);
+        else if (future.length) continue;
+        else need = remaining;
+      }
+      entries.push({ it, need, qty: 0 });
     }
 
     // budget 分の中で、entry の残りの必要量をできるだけ入れる。使った分を返す
@@ -338,6 +358,8 @@
     let targetMin = 0;
     let actualMin = 0;
     let remainingMin = 0;
+    let expectedMin = 0; // 曜日指定の項目があるときの全体の判定に使う
+    let anyWeekdays = false;
     const items = sortByPriority(week.items || []).map((it) => {
       const target = num(it.target);
       const actual = sumLog(week, it.id, () => true);
@@ -346,19 +368,36 @@
       targetMin += target * per;
       actualMin += Math.min(actual, target) * per;
       remainingMin += remaining * per;
+      // F-14 曜日指定の項目は、経過した日数ではなく、経過した指定曜日の数で判定する
+      let el = elapsed;
+      let tot = wd.length;
+      let perDay = remDays ? Math.ceil(remaining / remDays) : remaining;
+      let weekdayRest = null; // 残りの指定曜日の数（曜日指定がないときは null）
+      const wdd = hasWeekdays(it) ? weekdayDays(week, it) : [];
+      if (wdd.length) {
+        anyWeekdays = true;
+        tot = wdd.length;
+        el = today > week.end ? tot : wdd.filter((d) => d < today).length + (wdd.includes(today) && closedToday ? 1 : 0);
+        weekdayRest = wdd.filter((d) => d > today || (d === today && !closedToday)).length;
+        perDay = weekdayRest ? Math.ceil(remaining / weekdayRest) : remaining;
+      }
+      expectedMin += tot ? (target * per * el) / tot : 0;
       return {
         itemId: it.id,
         target,
         actual,
         remaining,
         pct: target ? Math.round((actual / target) * 100) : 0,
-        perDay: remDays ? Math.ceil(remaining / remDays) : remaining,
-        status: judge(actual, target, elapsed, wd.length),
+        perDay,
+        weekdayRest,
+        expectedPct: tot ? Math.min(100, (el / tot) * 100) : 0,
+        status: judge(actual, target, el, tot),
       };
     });
     return {
       items,
-      overall: judge(actualMin, targetMin, elapsed, wd.length),
+      // 曜日指定の項目があるときは、項目ごとの「終わっているはずの時間」を合わせて判定する
+      overall: anyWeekdays ? judge(actualMin, targetMin, expectedMin, targetMin) : judge(actualMin, targetMin, elapsed, wd.length),
       elapsed,
       totalDays: wd.length,
       remDays,
@@ -546,6 +585,7 @@
       daily: !!it.daily,
       dailyQty: optNum(it.dailyQty),
       dailyMin: optNum(it.dailyMin),
+      weekdays: weekdaysOf(it).sort(),
     });
     const cur = (currentItems || []).find((i) => i.name === name);
     if (cur) return pickOf(cur);
@@ -555,7 +595,7 @@
       .map((w) => (w.items || []).find((i) => i.name === name))
       .find(Boolean);
     if (prev) return pickOf(prev);
-    return { ...DEFAULT_ITEM, categoryId: guessCategory(name, categories), daily: false, dailyQty: null, dailyMin: null };
+    return { ...DEFAULT_ITEM, categoryId: guessCategory(name, categories), daily: false, dailyQty: null, dailyMin: null, weekdays: [] };
   }
 
   // 月の目標のカテゴリーの初期値。今の目標に同じ名前があればそのカテゴリー、なければ名前に入っているカテゴリー名
@@ -613,6 +653,7 @@
         }
         row.dailyQty = isNum(r.dailyQty) ? Number(r.dailyQty) : null;
         row.dailyMin = isNum(r.dailyMin) ? Number(r.dailyMin) : null;
+        row.weekdays = row.daily ? [] : weekdaysOf({ weekdays: r.weekdays }).sort();
       }
       out.push(row);
     }
@@ -667,7 +708,7 @@
     monthProgress, monthCheckpoints, validateMonthEntry, copyMonthGoals,
     itemDefaults, goalSourceDefault, findWeekByRange, normalizeImportRows, mergeMonthGoals, mergeWeekItems,
     isDaily, perUnitMin, categoryOf, ratioTotal, validateCategory, guessCategory, goalCategoryDefault, dayBreakdown,
-    validateExtra,
+    validateExtra, dayOfWeek, weekdaysOf, hasWeekdays, weekdayDays,
   };
 
   if (typeof module !== "undefined" && module.exports) {

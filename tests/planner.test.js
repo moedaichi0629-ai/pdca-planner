@@ -359,7 +359,7 @@ test("4.6 週の項目の初期値: 登録先の週 → 前の週の同じ名前
   const pick = (x) => ({ minutes: x.minutes, priority: x.priority });
   assert.deepEqual(pick(P.itemDefaults(weeks, "出品", "2026-11-02")), { minutes: 60, priority: 1 }); // 後ろの週は見ない
   assert.deepEqual(pick(P.itemDefaults(weeks, "出品", "2026-11-02", [{ name: "出品", minutes: 15, priority: 4 }])), { minutes: 15, priority: 4 });
-  assert.deepEqual(P.itemDefaults(weeks, "学習", "2026-11-02"), { minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null });
+  assert.deepEqual(P.itemDefaults(weeks, "学習", "2026-11-02"), { minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [] });
 });
 
 test("4.6 月の目標の集め方の初期値: 今の目標 → その月の週に同じ名前があれば週の項目から → 手で入力", () => {
@@ -378,7 +378,7 @@ test("4.6 確認画面の行の確認", () => {
   assert.deepEqual(ok, { ok: true, rows: [{ name: "売上", unit: "円", target: 30000, minimum: 10000, stretch: null, source: "manual", categoryId: null }] });
   const w = P.normalizeImportRows([{ include: true, name: "出品", target: 3, unit: "件", minutes: "60", priority: "1", minimum: 9 }], "week");
   // 週では最低・挑戦を使わない
-  assert.deepEqual(w.rows, [{ name: "出品", unit: "件", target: 3, minutes: 60, priority: 1, categoryId: null, daily: false, dailyQty: null, dailyMin: null }]);
+  assert.deepEqual(w.rows, [{ name: "出品", unit: "件", target: 3, minutes: 60, priority: 1, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [] }]);
   assert.match(P.normalizeImportRows([{ include: true, name: "", target: 1 }], "month").error, /名前/);
   assert.match(P.normalizeImportRows([{ include: true, name: "a", target: "" }], "month").error, /目標量/);
   assert.match(P.normalizeImportRows([{ include: true, name: "a", target: -1 }], "month").error, /目標量/);
@@ -603,14 +603,14 @@ test("4.6 まとめて登録: 前の週の同じ名前の項目からカテゴ�
     ] },
   };
   assert.deepEqual(P.itemDefaults(weeks, "Threads（AI・業務自動化）", "2026-11-02", [], CATS),
-    { minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30 });
+    { minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30, weekdays: [] });
   assert.equal(P.itemDefaults(weeks, "ココナラ出品", "2026-11-02", [], CATS).categoryId, null); // 削除済みはその他
   assert.equal(P.itemDefaults(weeks, "ココナラ競合調査", "2026-11-02", [], CATS).categoryId, "c_coco");
   assert.equal(P.goalCategoryDefault("ココナラ受注", [], CATS), "c_coco");
   assert.equal(P.goalCategoryDefault("ココナラ受注", [{ name: "ココナラ受注", categoryId: null }], CATS), null);
 
   const rows = P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: "3", dailyMin: "30" }], "week", CATS);
-  assert.deepEqual(rows.rows[0], { name: "投稿", unit: "", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30 });
+  assert.deepEqual(rows.rows[0], { name: "投稿", unit: "", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30, weekdays: [] });
   assert.match(P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: "0" }], "week", CATS).error, /1日にやる量/);
 });
 
@@ -682,4 +682,80 @@ test("4.2 カテゴリーなしの毎日することは先に引き、残りを�
   // 180 − 20 = 160分を 80・48・32分。Threads の48分に毎日の30分を含める
   assert.deepEqual(r.alloc.budgets.map((b) => b.min), [80, 48, 32]);
   assert.equal(r.alloc.dailyMin, 50);
+});
+
+// ---------- F-14 曜日指定 ----------
+// 週 11/2(月)〜11/8(日)。日曜 = 0、水曜 = 3
+function weekdayWeek(weekdays, { offDays = [], days = {} } = {}) {
+  return {
+    id: "w_wd", start: "2026-11-02", end: "2026-11-08", offDays, days,
+    items: [
+      { id: "make", name: "Threads投稿作成", unit: "投稿", target: 21, minutes: 5, priority: 1, weekdays },
+      { id: "sell", name: "出品", unit: "件", target: 7, minutes: 30, priority: 2 },
+    ],
+  };
+}
+const planOf = (r) => Object.fromEntries(r.plan.map((x) => [x.itemId, x.qty]));
+
+test("4.1 曜日指定: 指定した曜日だけ予定に入れ、1曜日ならその日に残りをまとめて入れる", () => {
+  const w = weekdayWeek([0]);
+  assert.deepEqual(planOf(P.planDay(w, "2026-11-02", 5)), { sell: 1 }); // 月曜は入れない（入らなかったにも出さない）
+  assert.deepEqual(P.planDay(w, "2026-11-02", 5).skipped, []);
+  assert.deepEqual(planOf(P.planDay(w, "2026-11-08", 6)), { make: 21, sell: 7 }); // 日曜に21投稿
+});
+
+test("4.1 曜日指定: 2つ以上なら残りを残りの指定曜日で分ける", () => {
+  const w = weekdayWeek([3, 0], { days: { "2026-11-04": { log: { make: { qty: 10 } } } } });
+  assert.equal(planOf(P.planDay(w, "2026-11-04", 5)).make, 11); // 水曜: ceil(21 ÷ 2)
+  assert.equal(planOf(P.planDay(w, "2026-11-08", 5)).make, 11); // 日曜: 残り 21 − 10
+});
+
+test("4.1 曜日指定: 指定した曜日を過ぎて残っていたら、次の稼働日にまとめて入れる。指定曜日が休みの日の週も同じ", () => {
+  const w = weekdayWeek([3], { days: { "2026-11-04": { log: { make: { qty: 5 } } } } });
+  assert.equal(planOf(P.planDay(w, "2026-11-05", 5)).make, 16);
+  const off = weekdayWeek([3], { offDays: ["2026-11-04"] });
+  assert.deepEqual(P.weekdayDays(off, off.items[0]), []);
+  assert.equal(planOf(P.planDay(off, "2026-11-02", 5)).make, 21);
+  // 指定曜日の日でも休みの日なら、その曜日の分としては入れない（ほかに指定曜日がないので、まとめて入れる）
+  assert.equal(planOf(P.planDay(off, "2026-11-04", 5)).make, 21);
+});
+
+test("4.1 曜日指定: 毎日やる項目では使わない", () => {
+  const it = { daily: true, dailyQty: 3, dailyMin: 30, weekdays: [0] };
+  assert.deepEqual(P.weekdaysOf(it), []);
+  assert.deepEqual(P.weekdaysOf({ weekdays: [0, "3", 9, 3] }), [0, 3]);
+});
+
+test("4.3 曜日指定の判定: 指定した曜日を締めるまでは「これから」、締めたら実績で判定する", () => {
+  const w = weekdayWeek([0]);
+  const row = (wk, today) => P.weekProgress(wk, today).items.find((x) => x.itemId === "make");
+  const before = row(w, "2026-11-06");
+  assert.equal(before.status.label, "これから"); // 金曜。出品は遅れでも、投稿作成は遅れにしない
+  assert.deepEqual([before.weekdayRest, before.perDay, before.expectedPct], [1, 21, 0]);
+  w.days = { "2026-11-08": { closed: true, log: { make: { qty: 21 } } } };
+  assert.equal(row(w, "2026-11-08").status.label, "達成");
+  w.days = { "2026-11-08": { closed: true, log: { make: { qty: 10 } } } };
+  const late = row(w, "2026-11-08");
+  assert.equal(late.status.label, "遅れ"); // 10 ÷ 21 = 48%
+  assert.deepEqual([late.weekdayRest, late.expectedPct], [0, 100]);
+  // 曜日指定のない項目は weekdayRest が null
+  assert.equal(P.weekProgress(w, "2026-11-06").items.find((x) => x.itemId === "sell").weekdayRest, null);
+});
+
+test("4.3 曜日指定の項目があるときの全体の判定は、項目ごとの終わっているはずの時間を合わせる", () => {
+  // 金曜まで締め済み（経過4日 / 稼働7日）。出品は4件で予定通り、投稿作成はまだ（日曜）
+  const days = {};
+  for (const d of ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]) days[d] = { closed: true, log: { sell: { qty: 1 } } };
+  const pr = P.weekProgress(weekdayWeek([0], { days }), "2026-11-06");
+  assert.equal(pr.items.find((x) => x.itemId === "sell").status.label, "予定通り");
+  assert.equal(pr.overall.label, "予定通り"); // 投稿作成が全体を遅れにしない
+});
+
+test("4.6 まとめて登録: 前の週の同じ名前の項目から曜日を引き継ぐ", () => {
+  const weeks = { a: { id: "a", start: "2026-10-26", end: "2026-11-01", items: [{ id: "1", name: "Threads投稿作成", minutes: 5, priority: 1, weekdays: [0, 3] }] } };
+  assert.deepEqual(P.itemDefaults(weeks, "Threads投稿作成", "2026-11-02", [], []).weekdays, [0, 3]);
+  const rows = P.normalizeImportRows([{ include: true, name: "作成", target: 21, minutes: 5, priority: 1, weekdays: [3, 0] }], "week", []);
+  assert.deepEqual(rows.rows[0].weekdays, [0, 3]);
+  const daily = P.normalizeImportRows([{ include: true, name: "作成", target: 21, minutes: 5, priority: 1, daily: true, dailyQty: 3, dailyMin: 15, weekdays: [0] }], "week", []);
+  assert.deepEqual(daily.rows[0].weekdays, []); // 毎日やる項目では使わない
 });
