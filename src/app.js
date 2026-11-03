@@ -33,6 +33,10 @@
   const MASCOT_INK = "#4a3528";
   const MASCOT_RED = "#c8302c";
   function mascotSvg(mood) {
+    return `<svg class="mascot m-${mood}" viewBox="0 0 64 64" aria-hidden="true" focusable="false">${mascotParts(mood)}</svg>`;
+  }
+  // 顔の部品（64×64 の座標）。幕を引く犬（pullerSvg）でも使う
+  function mascotParts(mood) {
     const O = MASCOT_INK, RED = MASCOT_RED;
     const ears = `<g class="ears"><path d="M13 22 C4 25 3 41 9 49 C13 54 20 50 21 43 C22 34 20 25 13 22Z" fill="#d6b88c" stroke="${O}" stroke-width="2"/>
     <path d="M51 22 C60 25 61 41 55 49 C51 54 44 50 43 43 C42 34 44 25 51 22Z" fill="#d6b88c" stroke="${O}" stroke-width="2"/></g>`;
@@ -69,7 +73,76 @@
     } else {
       face = `${openEyes}${brows()}${smile}`;
     }
-    return `<svg class="mascot m-${mood}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><g class="body">${ears}${head}${mood === "mie" ? "" : cheeks}${nose}${face}</g>${extra}</svg>`;
+    return `<g class="body">${ears}${head}${mood === "mie" ? "" : cheeks}${nose}${face}</g>${extra}`;
+  }
+
+  // F-18 幕を引く犬（シーズーを横から見た姿）。幕の端に付けた紅白の引き綱をくわえて左へ走る。
+  // 120×80 の座標で、右端（x=120）が幕の端。4本の足は前と後ろで交互に動かす
+  function pullerSvg() {
+    // 色は写真の子に合わせる: グレーがかったベージュの毛、おでこから鼻への白い筋、白い口元とひげ、大きな黒い鼻、白い足先
+    const O = "#4d3f33";
+    const COAT = "#c7b79e";
+    const COAT2 = "#a99881";
+    const SHADE = "#8f7e69";
+    const WHITE = "#f6f2ea";
+    const WHITE2 = "#ddd5c8";
+    const leg = (cls, x, tone) => `<g class="leg ${cls}">
+        <path d="M${x} 56 C${x - 1.5} 62 ${x - 1} 67 ${x - 0.5} 71 Q${x + 1.5} 73 ${x + 3} 71 Q${x + 5} 74 ${x + 7} 71 Q${x + 9} 73 ${x + 10} 70 C${x + 10.5} 65 ${x + 10} 60 ${x + 9} 56Z" fill="${tone}" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M${x - 2} 73.5 Q${x + 4} 70 ${x + 11} 73.5 Q${x + 12} 76.5 ${x + 8} 77 L${x + 1} 77 Q${x - 3} 76.5 ${x - 2} 73.5Z" fill="${tone}" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M${x + 2.5} 74 L${x + 2.5} 76.5 M${x + 5.5} 73.5 L${x + 5.5} 76.5 M${x + 8.5} 74 L${x + 8.5} 76.5" stroke="${WHITE2}" stroke-width=".9" stroke-linecap="round"/>
+      </g>`;
+    const strokes = (list, color = COAT2, w = 1.3) => list.map((d) => `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round"/>`).join("");
+    return `<svg class="puller-svg" viewBox="0 0 120 80" aria-hidden="true" focusable="false">
+      <g class="run">
+        <!-- 紅白の引き綱。口から頭と背中の後ろを通って幕の端まで -->
+        <g class="rope">
+          <path d="M10 35 C16 22 30 12 52 12 C78 12 100 12 120 16" fill="none" stroke="${O}" stroke-width="4.6" stroke-linecap="round"/>
+          <path d="M10 35 C16 22 30 12 52 12 C78 12 100 12 120 16" fill="none" stroke="#c8302c" stroke-width="3" stroke-linecap="round"/>
+          <path d="M10 35 C16 22 30 12 52 12 C78 12 100 12 120 16" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="3 3"/>
+        </g>
+        <!-- 奥の足 -->
+        ${leg("leg-fb", 34, WHITE2)}${leg("leg-bb", 74, WHITE2)}
+        <!-- しっぽ（背中に巻いたふさふさの毛。先は白っぽい） -->
+        <g class="tail"><path d="M82 34 C86 20 100 14 108 20 C113 24 110 32 103 32 C98 32 96 28 92 30 C89 32 89 38 86 40Z" fill="${COAT}" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M100 17 C106 16 111 20 110 26 C108 30 104 31 101 30 C104 27 104 21 100 17Z" fill="${WHITE}" opacity=".8"/>
+          ${strokes(["M90 26 C95 21 102 20 106 23", "M93 30 C97 27 101 27 104 29"])}</g>
+        <!-- 手前の足（白いふわふわ。上は胴の毛で隠れる） -->
+        ${leg("leg-f", 30, WHITE)}${leg("leg-b", 70, WHITE)}
+        <!-- 胴（長い毛のすそ）。背中は少し濃く、胸と腹は白っぽい -->
+        <path d="M26 40 C27 33 33 30 40 30 Q44 27 49 29 Q54 26 59 29 Q64 26 69 29 Q74 27 79 31 C85 32 89 36 89 42 Q92 46 89 50 C90 55 88 60 87 63 Q84 70 80 65 Q76 72 72 65 Q67 72 62 65 Q57 72 52 65 Q47 72 42 65 Q37 71 33 64 Q27 66 27 58 Q23 54 26 49 Q23 44 26 40Z" fill="${COAT}" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M44 31 C56 28 72 28 82 33 C76 38 60 38 46 36Z" fill="${COAT2}" opacity=".7"/>
+        <path d="M27 48 C30 56 36 62 44 63 Q40 68 35 64 Q29 66 28 59 Q25 54 27 48Z" fill="${WHITE}" opacity=".85"/>
+        ${strokes(["M40 40 C46 44 52 44 58 41", "M60 46 C66 50 72 50 78 46", "M44 53 C50 57 56 57 62 53", "M66 57 C70 60 76 60 80 57", "M48 61 C52 64 56 64 60 61"])}
+        <!-- 頭 -->
+        <g class="head">
+          <path d="M10 26 C10 17 15 11 21 10 Q25 7 29 10 Q35 10 38 15 Q42 19 40 24 Q43 29 39 33 C36 40 29 44 21 43 Q15 44 12 39 C9 35 9 30 10 26Z" fill="${COAT}" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+          <!-- おでこから鼻への白い筋 -->
+          <path d="M23 10 C27 10 28 14 25 18 C22 21 18 23 14 25 C12 22 14 18 18 15 C20 13 21 10 23 10Z" fill="${WHITE}"/>
+          <!-- ちょんまげ（赤いひも） -->
+          <path d="M22 11 C20 4 26 1 29 4 C31 6 29 10 27 11" fill="${COAT}" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M24 9 C24 6 26 4 27.5 5" fill="none" stroke="${WHITE}" stroke-width="1.6" stroke-linecap="round"/>
+          <rect x="21.5" y="8.5" width="7" height="3" rx="1.4" fill="#c8302c" stroke="${O}" stroke-width="1"/>
+          <!-- 目のまわりの少し濃い毛と目 -->
+          <ellipse cx="18" cy="23" rx="5" ry="4" fill="${SHADE}" opacity=".55"/>
+          <ellipse cx="17.8" cy="23" rx="2.5" ry="2.6" fill="#2a1f19"/><circle cx="18.6" cy="22.1" r=".8" fill="#fff"/>
+          <path d="M13 20 C15.5 18.3 20 18.3 23 20.3" fill="none" stroke="${COAT2}" stroke-width="1.7" stroke-linecap="round"/>
+          <!-- 口のまわり（白い毛と長いひげ） -->
+          <path d="M5 30 C5 25 9 23 14 24 C19 25 21 30 21 35 C21 41 16 45 11 45 C6 44 4 39 5 34Z" fill="${WHITE}" stroke="${O}" stroke-width="1.2"/>
+          ${strokes(["M6 37 C7 41 9 44 12 45", "M10 37 C11 41 12 44 15 45", "M14 36 C15 40 17 42 19 42", "M16 31 C18 33 19 36 19 38"], WHITE2, 1)}
+          <path d="M9 41 C10 44 12 46 14 46" fill="none" stroke="${COAT2}" stroke-width="1" stroke-linecap="round"/>
+          <!-- 大きな黒い鼻 -->
+          <path d="M3.6 28.6 C3.6 26 5.6 24.8 8 24.8 C10.6 24.8 12 26.4 11.8 28.6 C11.6 30.8 9.8 32 7.8 32 C5.4 32 3.6 30.8 3.6 28.6Z" fill="#1f1713"/>
+          <ellipse cx="6.6" cy="26.6" rx="1.4" ry=".7" fill="#fff" opacity=".55"/>
+          <path d="M6 30.2 Q7.8 31 9.6 30.2" fill="none" stroke="#000" stroke-width=".6" opacity=".6"/>
+          <!-- たれ耳（グレーベージュの長い毛。先は少し濃い。走ると揺れる） -->
+          <g class="ear"><path d="M28 14 C36 14 40 22 39 32 C38 40 37 47 32 49 Q29 50 28 46 Q25 47 26 42 C25 34 24 20 28 14Z" fill="${COAT}" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M27 40 C30 44 34 44 37 41 C36 46 34 49 32 49 Q29 50 28 46 Q25 47 27 40Z" fill="${COAT2}" opacity=".8"/>
+            ${strokes(["M30 20 C32 27 32 35 30 43", "M34 20 C36 27 36 36 34 45"], COAT2, 1.1)}</g>
+        </g>
+        <!-- 口の結び目（綱の先） -->
+        <circle cx="9.5" cy="36.5" r="2.4" fill="#c8302c" stroke="${O}" stroke-width="1"/>
+      </g>
+    </svg>`;
   }
   const MASCOT_TEXT = {
     sparkle: "予定より進んでいます。よっ、日本一！",
@@ -1538,16 +1611,204 @@
     }
   });
 
+  // F-18 画像を幕が開くモーションで見る。定式幕が右から左へ引かれて、画像が画面いっぱいに出る。開くときに拍子木を鳴らす
+  const stage = { list: [], index: 0, el: null, busy: false, back: null };
+  const imgSrc = (file) => "personal/" + file.split("/").map(encodeURIComponent).join("/");
+  const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const soundOn = () => data.settings.stageSound !== false;
+
+  // 拍子木（柝）の音。音のファイルは使わず、短い雑音と高い音を重ねて作る
+  let audio = null;
+  function clack(at, vol = 1) {
+    const ctx = audio;
+    const t = ctx.currentTime + at;
+    const len = Math.floor(ctx.sampleRate * 0.09);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.012));
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2400;
+    bp.Q.value = 6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.9 * vol, t);
+    noise.connect(bp).connect(g).connect(ctx.destination);
+    noise.start(t);
+    for (const [f, v] of [[1180, 0.35], [2950, 0.18]]) {
+      const o = ctx.createOscillator();
+      const og = ctx.createGain();
+      o.frequency.value = f;
+      og.gain.setValueAtTime(v * vol, t);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      o.connect(og).connect(ctx.destination);
+      o.start(t);
+      o.stop(t + 0.13);
+    }
+  }
+  // 幕開き: 「チョン、チョン」のあと、幕が引かれる間に柝を刻む（だんだん速く）
+  function playOpening(dur) {
+    if (!soundOn()) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      audio.resume?.();
+      clack(0);
+      clack(0.42);
+      let t = 0.9;
+      let gap = 0.3;
+      while (t < 0.9 + dur) {
+        clack(t, 0.7);
+        t += gap;
+        gap = Math.max(0.07, gap * 0.82);
+      }
+    } catch (e) {
+      // 音が出せないブラウザでは鳴らさない
+    }
+  }
+  function playClosing() {
+    if (!soundOn()) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      clack(0.05);
+    } catch (e) {
+      // 鳴らさない
+    }
+  }
+
+  function stageShow(i) {
+    const n = stage.list.length;
+    stage.index = ((i % n) + n) % n;
+    const img = stage.el.querySelector(".stage-img");
+    const msg = stage.el.querySelector(".stage-msg");
+    msg.hidden = true;
+    img.hidden = false;
+    img.onerror = () => { img.hidden = true; msg.hidden = false; };
+    img.src = imgSrc(stage.list[stage.index]);
+    stage.el.querySelector(".stage-count").textContent = `${stage.index + 1} / ${n}`;
+  }
+  function stageSoundLabel() {
+    const b = stage.el.querySelector(".stage-sound");
+    b.setAttribute("aria-pressed", String(soundOn()));
+    b.textContent = soundOn() ? "♪ 音あり" : "音なし";
+  }
+
+  function openStage() {
+    if (stage.el || !stage.list.length) return;
+    stage.back = document.activeElement;
+    const el = document.createElement("div");
+    el.className = "stage";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-modal", "true");
+    el.setAttribute("aria-label", "画像を見る");
+    const many = stage.list.length > 1;
+    el.innerHTML = `<div class="stage-view">
+        <img class="stage-img" alt="">
+        <p class="stage-msg" hidden>この画像を読み込めませんでした。personal/images.js の名前を確かめてください。</p>
+      </div>
+      ${many ? `<button type="button" class="stage-btn stage-prev" data-stage="prev" aria-label="前の画像">‹</button>
+      <button type="button" class="stage-btn stage-next" data-stage="next" aria-label="次の画像">›</button>` : ""}
+      <div class="stage-bar">
+        <span class="stage-count"></span>
+        <button type="button" class="stage-sound" data-stage="sound"></button>
+        <button type="button" class="stage-btn stage-close" data-stage="close" aria-label="閉じる">×</button>
+      </div>
+      <div class="maku" aria-hidden="true"></div>
+      <div class="puller" aria-hidden="true">${pullerSvg()}</div>`;
+    document.body.appendChild(el);
+    document.body.classList.add("stage-lock");
+    stage.el = el;
+    stageShow(stage.index);
+    stageSoundLabel();
+    el.querySelector(".stage-close").focus();
+    const maku = el.querySelector(".maku");
+    if (reduceMotion()) {
+      maku.classList.add("open");
+      return;
+    }
+    // 幕を閉じた形で出してから、拍子木のあとに犬が幕の端を引いて開く（幕は左端にたたまれる）
+    const DUR = 2.2;
+    const puller = el.querySelector(".puller");
+    stage.busy = true;
+    playOpening(DUR);
+    setTimeout(() => {
+      if (!stage.el) return;
+      maku.classList.add("opening");
+      puller.classList.add("opening");
+      setTimeout(() => {
+        maku.classList.replace("opening", "open");
+        puller.classList.replace("opening", "done");
+        stage.busy = false;
+      }, DUR * 1000);
+    }, soundOn() ? 850 : 250);
+  }
+
+  function closeStage() {
+    if (!stage.el || stage.busy) return;
+    const el = stage.el;
+    const done = () => {
+      el.remove();
+      document.body.classList.remove("stage-lock");
+      stage.el = null;
+      stage.busy = false;
+      stage.back?.focus?.();
+    };
+    if (reduceMotion()) return done();
+    stage.busy = true;
+    const maku = el.querySelector(".maku");
+    const puller = el.querySelector(".puller");
+    maku.classList.remove("open");
+    maku.classList.add("closing");
+    puller.classList.remove("done");
+    puller.classList.add("closing");
+    setTimeout(() => { playClosing(); done(); }, 1400);
+  }
+
+  document.addEventListener("click", (e) => {
+    if (e.target.closest?.('[data-act="open-stage"]')) return openStage();
+    if (!stage.el || !stage.el.contains(e.target)) return;
+    const b = e.target.closest("[data-stage]");
+    const a = b?.dataset.stage;
+    if (a === "close") return closeStage();
+    if (a === "prev") return stageShow(stage.index - 1);
+    if (a === "next") return stageShow(stage.index + 1);
+    if (a === "sound") {
+      data.settings.stageSound = !soundOn();
+      persist();
+      return stageSoundLabel();
+    }
+    // 画像の外（黒い余白）を押したら閉じる
+    if (e.target.classList.contains("stage-view")) closeStage();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!stage.el) return;
+    if (e.key === "Escape") closeStage();
+    else if (e.key === "ArrowLeft" && stage.list.length > 1) stageShow(stage.index - 1);
+    else if (e.key === "ArrowRight" && stage.list.length > 1) stageShow(stage.index + 1);
+  });
+  // スマホは左右にスワイプしてめくる
+  let touchX = null;
+  document.addEventListener("touchstart", (e) => { if (stage.el) touchX = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (!stage.el || touchX === null || stage.list.length < 2) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    touchX = null;
+    if (Math.abs(dx) > 50) stageShow(stage.index + (dx < 0 ? 1 : -1));
+  });
+
   // F-16 自分の画像の帯。personal/images.js の一覧から日替わりで1枚。一覧がなければ personal/hero.jpg を試す
   (function showHero() {
     const hero = $(".hero");
     const img = $("#hero-img");
     if (!hero || !img) return;
-    const file = P.pickDaily(Array.isArray(window.PERSONAL_IMAGES) ? window.PERSONAL_IMAGES : ["hero.jpg"], todayStr());
+    const list = (Array.isArray(window.PERSONAL_IMAGES) ? window.PERSONAL_IMAGES : ["hero.jpg"]).filter((x) => typeof x === "string" && x.trim());
+    const file = P.pickDaily(list, todayStr());
     if (!file) return hero.remove();
+    stage.list = list;
+    stage.index = list.indexOf(file);
     img.onload = () => { hero.hidden = false; };
     img.onerror = () => hero.remove();
-    img.src = "personal/" + file.split("/").map(encodeURIComponent).join("/");
+    img.src = imgSrc(file);
   })();
 
   if (readOnly) setSave("err", "保存を止めています");

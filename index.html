@@ -13,7 +13,10 @@
 </head>
 <body>
   <!-- 自分の画像（personal/ の画像を日替わりで1枚）を一番上の帯に出す。personal/ は GitHub に上げない -->
-  <div class="hero" hidden><img id="hero-img" alt=""></div>
+  <div class="hero" hidden>
+    <img id="hero-img" alt="" data-act="open-stage">
+    <button type="button" class="hero-open" data-act="open-stage">幕を開ける ▼</button>
+  </div>
   <div class="joshiki" aria-hidden="true"></div>
   <div class="wrap">
     <header>
