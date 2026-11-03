@@ -90,26 +90,168 @@
     return [...items].sort((a, b) => num(a.priority) - num(b.priority));
   }
 
+  // ---------- カテゴリー・毎日すること（F-12・F-13） ----------
+  // 毎日やる項目か（「1日にやる量」が0より大きいときだけ毎日やる項目として扱う）
+  const isDaily = (it) => !!it.daily && num(it.dailyQty) > 0;
+
+  // 1単位あたりの時間（分）。毎日やる項目は「今かかっている時間 ÷ 1日にやる量」、それ以外は1回の時間
+  const perUnitMin = (it) => (isDaily(it) ? Math.max(0, num(it.dailyMin)) / num(it.dailyQty) : Math.max(0, num(it.minutes)));
+
+  // 項目・目標のカテゴリー id。未選択や削除済みのカテゴリーは null（その他）
+  function categoryOf(x, categories) {
+    const id = x?.categoryId;
+    return id && (categories || []).some((c) => c.id === id) ? id : null;
+  }
+
+  // 割合の合計（%）
+  const ratioTotal = (categories) => (categories || []).reduce((s, c) => s + Math.max(0, num(c.ratio)), 0);
+
+  // カテゴリーの名前と割合の確認。問題があれば理由、なければ null（exceptId は編集中のカテゴリー）
+  function validateCategory(name, ratio, categories, exceptId) {
+    const n = String(name ?? "").trim();
+    if (!n) return "カテゴリーの名前を入れてください。";
+    if (n === "その他") return "「その他」は未選択の項目に使う名前なので、別の名前にしてください。";
+    if ((categories || []).some((c) => c.id !== exceptId && c.name === n)) return `「${n}」はもうあります。別の名前にしてください。`;
+    const r = Number(ratio);
+    if (ratio === "" || ratio === null || ratio === undefined || !Number.isFinite(r) || r < 0 || r > 100) return "割合を0〜100の数で入れてください。";
+    return null;
+  }
+
+  // 名前に入っているカテゴリー名のうち、いちばん長いもの（英字の大文字・小文字は区別しない）。なければ null
+  function guessCategory(name, categories) {
+    const n = String(name ?? "").toLowerCase();
+    let best = null;
+    for (const c of categories || []) {
+      const cn = String(c.name ?? "").trim().toLowerCase();
+      if (cn && n.includes(cn) && (!best || cn.length > best.name.trim().length)) best = c;
+    }
+    return best ? best.id : null;
+  }
+
   // ---------- 4.1 / 4.2 今日の予定 ----------
-  // 必要量 = ceil(残り量 ÷ 残り日数)。優先度順に使える時間へ詰め、入らない分は skipped へ。
-  function planDay(week, date, hours) {
+  // 1. 毎日すること（稼働日のみ）→ 2. 残りをカテゴリーの割合で分ける → 3. カテゴリーの中で優先度順
+  // → 4. 余った時間を割合の大きい順・その他の順に回す → 5. 入らない分は skipped へ。
+  // カテゴリーがなければ、毎日することのあとは優先度順に詰める（今までの割り振り）。
+  // 予定の行は { itemId, qty, min }。毎日やる項目は daily: true、カテゴリーがあれば categoryId を足す
+  function planDay(week, date, hours, categories) {
+    const cats = categories || [];
     const remDays = workdays(week).filter((d) => d > date).length + 1;
+    const isOff = (week.offDays || []).includes(date);
     let avail = Math.max(0, Math.round(num(hours) * 60));
-    const plan = [];
+    const row = (it, qty, min, daily) => {
+      const r = { itemId: it.id, qty, min };
+      if (daily) r.daily = true;
+      const c = categoryOf(it, cats);
+      if (c) r.categoryId = c;
+      return r;
+    };
+    const dailyPlan = [];
     const skipped = [];
+    const entries = []; // 毎日やる項目以外 { it, need, qty }
+    let dailyMin = 0;
+    let dailyShort = false;
+
     for (const it of sortByPriority(week.items || [])) {
       const remaining = Math.max(0, num(it.target) - sumLog(week, it.id, (d) => d < date));
       if (remaining <= 0) continue;
-      const need = Math.ceil(remaining / remDays);
-      const per = Math.max(0, num(it.minutes));
-      const qty = per > 0 ? Math.min(need, Math.floor(avail / per)) : need;
-      if (qty > 0) {
-        plan.push({ itemId: it.id, qty, min: qty * per });
-        avail -= qty * per;
+      if (isDaily(it)) {
+        if (isOff) continue; // 休みの日は毎日やる項目を入れない
+        const need = Math.min(num(it.dailyQty), remaining);
+        const per = perUnitMin(it);
+        let qty = need;
+        if (Math.round(per * need) > avail) {
+          qty = per > 0 ? Math.min(need, Math.floor(avail / per)) : need;
+          dailyShort = true;
+        }
+        if (qty > 0) {
+          const min = Math.round(per * qty);
+          dailyPlan.push(row(it, qty, min, true));
+          avail -= min;
+          dailyMin += min;
+        }
+        if (qty < need) skipped.push(row(it, need - qty, Math.round(per * (need - qty)), true));
+        continue;
       }
-      if (qty < need) skipped.push({ itemId: it.id, qty: need - qty, min: (need - qty) * per });
+      entries.push({ it, need: Math.ceil(remaining / remDays), qty: 0 });
     }
-    return { plan, skipped };
+
+    // budget 分の中で、entry の残りの必要量をできるだけ入れる。使った分を返す
+    const fill = (e, budget) => {
+      const per = Math.max(0, num(e.it.minutes));
+      const left = e.need - e.qty;
+      const q = per > 0 ? Math.min(left, Math.floor(budget / per)) : left;
+      e.qty += q;
+      return q * per;
+    };
+
+    const budgets = [];
+    if (!cats.length) {
+      for (const e of entries) avail -= fill(e, avail);
+    } else {
+      const total = ratioTotal(cats);
+      let pool = avail;
+      for (const c of cats) {
+        const min = total > 0 ? Math.floor((avail * Math.max(0, num(c.ratio))) / total) : 0;
+        budgets.push({ categoryId: c.id, min });
+        pool -= min;
+      }
+      // 3. カテゴリーの中で優先度順。使い切らなかった分は pool へ
+      for (const b of budgets) {
+        let left = b.min;
+        for (const e of entries.filter((x) => categoryOf(x.it, cats) === b.categoryId)) left -= fill(e, left);
+        pool += left;
+      }
+      // 4. 割合の大きい順（同じなら登録順）→ その他。各カテゴリーの中は優先度順
+      const order = [...cats].sort((a, b) => Math.max(0, num(b.ratio)) - Math.max(0, num(a.ratio))).map((c) => c.id);
+      for (const id of [...order, null]) {
+        for (const e of entries.filter((x) => categoryOf(x.it, cats) === id)) pool -= fill(e, pool);
+      }
+    }
+
+    const plan = [...dailyPlan];
+    for (const e of entries) {
+      const per = Math.max(0, num(e.it.minutes));
+      if (e.qty > 0) plan.push(row(e.it, e.qty, e.qty * per));
+      if (e.qty < e.need) skipped.push(row(e.it, e.need - e.qty, (e.need - e.qty) * per));
+    }
+    return { plan, skipped, alloc: { dailyMin, budgets, dailyShort } };
+  }
+
+  // 4.7 今日の内訳。毎日すること・各カテゴリー・その他・余りの、持ち時間・予定・実際（分）
+  // 予定は作った時点の区分（予定の行の daily・categoryId）で数え、予定外にやった項目は今の区分で数える
+  function dayBreakdown(day, items, categories) {
+    const cats = categories || [];
+    const im = Object.fromEntries((items || []).map((i) => [i.id, i]));
+    const keyOf = (daily, categoryId) => (daily ? "daily" : categoryOf({ categoryId }, cats) || "other");
+    const plannedKey = {};
+    const planMin = {};
+    for (const p of day?.plan || []) {
+      const k = keyOf(p.daily, p.categoryId);
+      plannedKey[p.itemId] = k;
+      planMin[k] = (planMin[k] || 0) + num(p.min);
+    }
+    const actualMin = {};
+    for (const [id, l] of Object.entries(day?.log || {})) {
+      const it = im[id];
+      if (!it && !plannedKey[id]) continue;
+      const k = plannedKey[id] || keyOf(isDaily(it), it.categoryId);
+      actualMin[k] = (actualMin[k] || 0) + num(l.min);
+    }
+    const budgetOf = Object.fromEntries((day?.alloc?.budgets || []).map((b) => [b.categoryId, num(b.min)]));
+    const seg = (key, kind, name, index, budget) => ({ key, kind, name, index, budget, planMin: planMin[key] || 0, actualMin: actualMin[key] || 0 });
+    const segments = [];
+    if (planMin.daily || actualMin.daily) segments.push(seg("daily", "daily", "毎日すること", -1, num(day?.alloc?.dailyMin)));
+    cats.forEach((c, i) => segments.push(seg(c.id, "category", c.name, i, budgetOf[c.id] ?? null)));
+    if (planMin.other || actualMin.other) segments.push(seg("other", "other", "その他", -1, null));
+    const total = Math.max(0, Math.round(num(day?.hours) * 60));
+    const planned = segments.reduce((s, x) => s + x.planMin, 0);
+    return {
+      total,
+      segments,
+      free: Math.max(0, total - planned),
+      hasActual: segments.some((x) => x.actualMin > 0),
+      dailyShort: !!day?.alloc?.dailyShort,
+    };
   }
 
   // ---------- 4.3 進捗の判定 ----------
@@ -145,7 +287,7 @@
     const items = sortByPriority(week.items || []).map((it) => {
       const target = num(it.target);
       const actual = sumLog(week, it.id, () => true);
-      const per = num(it.minutes);
+      const per = perUnitMin(it);
       const remaining = Math.max(0, target - actual);
       targetMin += target * per;
       actualMin += Math.min(actual, target) * per;
@@ -321,7 +463,7 @@
     return null;
   }
 
-  // 前の月の目標を引き継ぐ。名前・単位・目標量・最低目標・挑戦目標・集め方だけを写し、手入力の実績は写さない
+  // 前の月の目標を引き継ぐ。名前・単位・目標量・最低目標・挑戦目標・集め方・カテゴリーだけを写し、手入力の実績は写さない
   function copyMonthGoals(goals, makeId) {
     return (goals || []).map((g) => ({
       id: makeId(),
@@ -331,6 +473,7 @@
       minimum: minimumOf(g),
       stretch: stretchOf(g),
       source: g.source === "manual" ? "manual" : "weekly",
+      categoryId: g.categoryId ?? null,
       entries: [],
     }));
   }
@@ -338,10 +481,18 @@
   // ---------- 4.6 文章からまとめて登録（F-11） ----------
   const DEFAULT_ITEM = { minutes: 30, priority: 3 };
 
-  // 週の項目の「1回の時間・優先度」の初期値。
-  // 登録先の週（currentItems）に同じ名前があればその値、なければ start より前の週でいちばん新しい同じ名前の項目、なければ 30分・優先度3
-  function itemDefaults(weeks, name, start, currentItems) {
-    const pickOf = (it) => ({ minutes: num(it.minutes), priority: num(it.priority) || DEFAULT_ITEM.priority });
+  // 週の項目の「1回の時間・優先度・カテゴリー・毎日やる」の初期値。
+  // 登録先の週（currentItems）に同じ名前があればその値、なければ start より前の週でいちばん新しい同じ名前の項目の値。
+  // どちらもなければ 30分・優先度3・毎日やるなし。カテゴリーは名前に入っているカテゴリー名（guessCategory）
+  function itemDefaults(weeks, name, start, currentItems, categories) {
+    const pickOf = (it) => ({
+      minutes: num(it.minutes),
+      priority: num(it.priority) || DEFAULT_ITEM.priority,
+      categoryId: categoryOf(it, categories),
+      daily: !!it.daily,
+      dailyQty: optNum(it.dailyQty),
+      dailyMin: optNum(it.dailyMin),
+    });
     const cur = (currentItems || []).find((i) => i.name === name);
     if (cur) return pickOf(cur);
     const prev = Object.values(weeks || {})
@@ -349,7 +500,14 @@
       .sort((a, b) => (a.start < b.start ? 1 : -1))
       .map((w) => (w.items || []).find((i) => i.name === name))
       .find(Boolean);
-    return prev ? pickOf(prev) : { ...DEFAULT_ITEM };
+    if (prev) return pickOf(prev);
+    return { ...DEFAULT_ITEM, categoryId: guessCategory(name, categories), daily: false, dailyQty: null, dailyMin: null };
+  }
+
+  // 月の目標のカテゴリーの初期値。今の目標に同じ名前があればそのカテゴリー、なければ名前に入っているカテゴリー名
+  function goalCategoryDefault(name, currentGoals, categories) {
+    const cur = (currentGoals || []).find((g) => g.name === name);
+    return cur ? categoryOf(cur, categories) : guessCategory(name, categories);
   }
 
   // 月の目標の「集め方」の初期値。今の目標に同じ名前があればその値、
@@ -367,7 +525,7 @@
 
   // 確認画面の行を確かめて、保存する形にする。kind: "month" | "week"
   // 戻り値: { ok: true, rows } / { ok: false, error }。rows は登録する行だけ
-  function normalizeImportRows(rows, kind) {
+  function normalizeImportRows(rows, kind, categories) {
     const isNum = (v) => v !== "" && v !== null && v !== undefined && Number.isFinite(Number(v)) && Number(v) >= 0;
     const out = [];
     const names = new Set();
@@ -386,12 +544,21 @@
           row[f] = optNum(r[f]);
         }
         row.source = r.source === "manual" ? "manual" : "weekly";
+        row.categoryId = categoryOf(r, categories);
       } else {
         if (!isNum(r.minutes)) return { ok: false, error: `${at}（${name}）: 1回の時間を0以上の数で入れてください。` };
         const p = Number(r.priority);
         if (!Number.isInteger(p) || p < 1 || p > 5) return { ok: false, error: `${at}（${name}）: 優先度は1〜5で選んでください。` };
         row.minutes = Number(r.minutes);
         row.priority = p;
+        row.categoryId = categoryOf(r, categories);
+        row.daily = !!r.daily;
+        if (row.daily) {
+          if (!isNum(r.dailyQty) || Number(r.dailyQty) <= 0) return { ok: false, error: `${at}（${name}）: 1日にやる量を0より大きい数で入れてください。` };
+          if (!isNum(r.dailyMin)) return { ok: false, error: `${at}（${name}）: 今かかっている時間を0以上の数で入れてください。` };
+        }
+        row.dailyQty = isNum(r.dailyQty) ? Number(r.dailyQty) : null;
+        row.dailyMin = isNum(r.dailyMin) ? Number(r.dailyMin) : null;
       }
       out.push(row);
     }
@@ -445,6 +612,7 @@
     monthOf, addMonths, daysInMonth, monthRange, isDayClosed, monthElapsedDays, weeksInMonth, goalActual, goalLinked,
     monthProgress, monthCheckpoints, validateMonthEntry, copyMonthGoals,
     itemDefaults, goalSourceDefault, findWeekByRange, normalizeImportRows, mergeMonthGoals, mergeWeekItems,
+    isDaily, perUnitMin, categoryOf, ratioTotal, validateCategory, guessCategory, goalCategoryDefault, dayBreakdown,
   };
 
   if (typeof module !== "undefined" && module.exports) {

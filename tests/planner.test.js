@@ -333,8 +333,8 @@ test("F-08 前の月の目標を引き継ぐ: 名前・単位・目標量・挑�
   let n = 0;
   const copied = P.copyMonthGoals([weeklyGoal, salesGoal], () => `new_${++n}`);
   assert.deepEqual(copied, [
-    { id: "new_1", name: "Threads", unit: "投稿", target: 93, minimum: null, stretch: null, source: "weekly", entries: [] },
-    { id: "new_2", name: "売上", unit: "円", target: 50000, minimum: null, stretch: 100000, source: "manual", entries: [] },
+    { id: "new_1", name: "Threads", unit: "投稿", target: 93, minimum: null, stretch: null, source: "weekly", categoryId: null, entries: [] },
+    { id: "new_2", name: "売上", unit: "円", target: 50000, minimum: null, stretch: 100000, source: "manual", categoryId: null, entries: [] },
   ]);
   assert.equal(salesGoal.entries.length, 2); // 元の月の実績は残る
 });
@@ -356,9 +356,10 @@ test("4.6 週の項目の初期値: 登録先の週 → 前の週の同じ名前
     b: { id: "b", start: "2026-10-26", end: "2026-11-01", items: [{ id: "2", name: "出品", minutes: 60, priority: 1 }] },
     c: { id: "c", start: "2026-11-09", end: "2026-11-15", items: [{ id: "3", name: "出品", minutes: 99, priority: 5 }] },
   };
-  assert.deepEqual(P.itemDefaults(weeks, "出品", "2026-11-02"), { minutes: 60, priority: 1 }); // 後ろの週は見ない
-  assert.deepEqual(P.itemDefaults(weeks, "出品", "2026-11-02", [{ name: "出品", minutes: 15, priority: 4 }]), { minutes: 15, priority: 4 });
-  assert.deepEqual(P.itemDefaults(weeks, "学習", "2026-11-02"), { minutes: 30, priority: 3 });
+  const pick = (x) => ({ minutes: x.minutes, priority: x.priority });
+  assert.deepEqual(pick(P.itemDefaults(weeks, "出品", "2026-11-02")), { minutes: 60, priority: 1 }); // 後ろの週は見ない
+  assert.deepEqual(pick(P.itemDefaults(weeks, "出品", "2026-11-02", [{ name: "出品", minutes: 15, priority: 4 }])), { minutes: 15, priority: 4 });
+  assert.deepEqual(P.itemDefaults(weeks, "学習", "2026-11-02"), { minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null });
 });
 
 test("4.6 月の目標の集め方の初期値: 今の目標 → その月の週に同じ名前があれば週の項目から → 手で入力", () => {
@@ -374,9 +375,10 @@ test("4.6 確認画面の行の確認", () => {
     { include: true, name: " 売上 ", target: "30000", unit: "円", minimum: "10000", stretch: "", source: "manual" },
     { include: false, name: "note", target: "" },
   ], "month");
-  assert.deepEqual(ok, { ok: true, rows: [{ name: "売上", unit: "円", target: 30000, minimum: 10000, stretch: null, source: "manual" }] });
+  assert.deepEqual(ok, { ok: true, rows: [{ name: "売上", unit: "円", target: 30000, minimum: 10000, stretch: null, source: "manual", categoryId: null }] });
   const w = P.normalizeImportRows([{ include: true, name: "出品", target: 3, unit: "件", minutes: "60", priority: "1", minimum: 9 }], "week");
-  assert.deepEqual(w.rows, [{ name: "出品", unit: "件", target: 3, minutes: 60, priority: 1 }]); // 週では最低・挑戦を使わない
+  // 週では最低・挑戦を使わない
+  assert.deepEqual(w.rows, [{ name: "出品", unit: "件", target: 3, minutes: 60, priority: 1, categoryId: null, daily: false, dailyQty: null, dailyMin: null }]);
   assert.match(P.normalizeImportRows([{ include: true, name: "", target: 1 }], "month").error, /名前/);
   assert.match(P.normalizeImportRows([{ include: true, name: "a", target: "" }], "month").error, /目標量/);
   assert.match(P.normalizeImportRows([{ include: true, name: "a", target: -1 }], "month").error, /目標量/);
@@ -429,4 +431,181 @@ test("4.6 開始日・終了日が同じ週を探す", () => {
   const weeks = { a: { id: "a", start: "2026-11-02", end: "2026-11-08" } };
   assert.equal(P.findWeekByRange(weeks, "2026-11-02", "2026-11-08").id, "a");
   assert.equal(P.findWeekByRange(weeks, "2026-11-02", "2026-11-07"), null);
+});
+
+// ---------- F-12 毎日すること・F-13 カテゴリー ----------
+const CATS = [
+  { id: "c_coco", name: "ココナラ", ratio: 50 },
+  { id: "c_th", name: "Threads", ratio: 30 },
+  { id: "c_study", name: "学習", ratio: 20 },
+];
+
+// 週 11/2〜11/8（休みなし）。11/2 の予定を作る（残り日数7）
+function catWeek(items, offDays = []) {
+  return { id: "w_cat", start: "2026-11-02", end: "2026-11-08", offDays, items, days: {} };
+}
+
+test("4.2 必須の例: 3時間・毎日すること30分・50/30/20% → 75・45・30分。学習の余り10分がほかのカテゴリーに回る", () => {
+  const w = catWeek([
+    { id: "daily", name: "Threads（AI・業務自動化）", unit: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: 3, dailyMin: 30, categoryId: "c_th" },
+    { id: "coco", name: "ココナラ競合調査", unit: "サービス", target: 70, minutes: 10, priority: 1, categoryId: "c_coco" }, // 必要量10 = 100分
+    { id: "th", name: "Threads分析", unit: "回", target: 70, minutes: 15, priority: 2, categoryId: "c_th" }, // 必要量10 = 150分
+    { id: "study", name: "学習", unit: "講義", target: 7, minutes: 20, priority: 3, categoryId: "c_study" }, // 必要量1 = 20分
+  ]);
+  const r = P.planDay(w, "2026-11-02", 3, CATS);
+  assert.equal(r.alloc.dailyMin, 30);
+  assert.deepEqual(r.alloc.budgets, [
+    { categoryId: "c_coco", min: 75 },
+    { categoryId: "c_th", min: 45 },
+    { categoryId: "c_study", min: 30 },
+  ]);
+  // ココナラ 75分 → 7件(70分)・余り5。Threads 45分 → 3回(45分)。学習 20分・余り10。
+  // 余り 5 + 10 = 15分を割合の大きい順に回す: ココナラにもう1件(10分)、残り5分は Threads(15分)に足りない
+  assert.deepEqual(r.plan, [
+    { itemId: "daily", qty: 3, min: 30, daily: true, categoryId: "c_th" },
+    { itemId: "coco", qty: 8, min: 80, categoryId: "c_coco" },
+    { itemId: "th", qty: 3, min: 45, categoryId: "c_th" },
+    { itemId: "study", qty: 1, min: 20, categoryId: "c_study" },
+  ]);
+  assert.deepEqual(r.skipped, [
+    { itemId: "coco", qty: 2, min: 20, categoryId: "c_coco" },
+    { itemId: "th", qty: 7, min: 105, categoryId: "c_th" },
+  ]);
+});
+
+test("4.2 余った時間は、学習カテゴリーからほかのカテゴリーの入りきっていない項目に回る", () => {
+  const w = catWeek([
+    { id: "coco", name: "出品", unit: "件", target: 7, minutes: 80, priority: 1, categoryId: "c_coco" }, // 1件80分 > 75分
+    { id: "th", name: "投稿", unit: "投稿", target: 70, minutes: 5, priority: 1, categoryId: "c_th" }, // 10投稿 = 50分 > 45分
+    { id: "study", name: "学習", unit: "講義", target: 7, minutes: 20, priority: 1, categoryId: "c_study" },
+  ]);
+  const r = P.planDay(w, "2026-11-02", 2.5, CATS); // 150分 → 75・45・30
+  // 余り: ココナラ75 + Threads 0 + 学習10 = 85分 → ココナラ（50%）が先に出品1件80分、残り5分で投稿1
+  assert.deepEqual(r.plan.map((x) => [x.itemId, x.qty, x.min]), [["coco", 1, 80], ["th", 10, 50], ["study", 1, 20]]);
+  assert.deepEqual(r.skipped, []);
+});
+
+test("4.2 割合の合計が100%でないときは合計に対する比で分ける（合計80%）", () => {
+  const cats = [{ id: "a", name: "A", ratio: 40 }, { id: "b", name: "B", ratio: 40 }];
+  const r = P.planDay(catWeek([]), "2026-11-02", 2, cats);
+  assert.deepEqual(r.alloc.budgets, [{ categoryId: "a", min: 60 }, { categoryId: "b", min: 60 }]);
+  assert.equal(P.ratioTotal(cats), 80);
+});
+
+test("4.2 その他（未選択・削除済みのカテゴリー）は、カテゴリーで余った時間だけを使う", () => {
+  const w = catWeek([
+    { id: "coco", name: "出品", unit: "件", target: 70, minutes: 10, priority: 1, categoryId: "c_coco" }, // 10件 = 100分
+    { id: "free", name: "掃除", unit: "回", target: 7, minutes: 20, priority: 1 }, // その他
+    { id: "gone", name: "旧", unit: "回", target: 7, minutes: 10, priority: 2, categoryId: "c_deleted" }, // その他
+  ]);
+  const cats = [{ id: "c_coco", name: "ココナラ", ratio: 100 }];
+  const short = P.planDay(w, "2026-11-02", 1.5, cats); // 90分すべてココナラ
+  assert.deepEqual(short.plan.map((x) => x.itemId), ["coco"]);
+  assert.deepEqual(short.skipped.map((x) => x.itemId), ["coco", "free", "gone"]);
+  assert.equal("categoryId" in short.skipped[2], false);
+  const enough = P.planDay(w, "2026-11-02", 2.5, cats); // 150分 → ココナラ100分、余り50分をその他へ
+  assert.deepEqual(enough.plan.map((x) => [x.itemId, x.min]), [["coco", 100], ["free", 20], ["gone", 10]]);
+});
+
+test("4.2 毎日すること: 1日の量と時間を使い、残り量が少なければ量の割合で時間を減らす。残り0なら入れない", () => {
+  const items = [
+    { id: "d1", name: "投稿", unit: "投稿", target: 21, minutes: 0, priority: 2, daily: true, dailyQty: 3, dailyMin: 30 },
+    { id: "d2", name: "日記", unit: "回", target: 7, minutes: 0, priority: 1, daily: true, dailyQty: 1, dailyMin: 10 },
+  ];
+  const w = catWeek(items);
+  w.days = {
+    "2026-11-02": { log: { d1: { qty: 19 } } }, // 残り2投稿
+    "2026-11-03": { log: { d2: { qty: 7 } } }, // 残り0
+  };
+  const r = P.planDay(w, "2026-11-04", 2);
+  assert.deepEqual(r.plan, [{ itemId: "d1", qty: 2, min: 20, daily: true }]);
+  assert.deepEqual(r.alloc, { dailyMin: 20, budgets: [], dailyShort: false });
+});
+
+test("4.2 毎日することだけで時間が足りないときは、入らない分を skipped に出して dailyShort", () => {
+  const w = catWeek([
+    { id: "d1", name: "投稿", unit: "投稿", target: 21, priority: 1, daily: true, dailyQty: 3, dailyMin: 30 },
+    { id: "d2", name: "学習", unit: "講義", target: 7, priority: 2, daily: true, dailyQty: 1, dailyMin: 60 },
+    { id: "n", name: "出品", unit: "件", target: 7, minutes: 10, priority: 1 },
+  ]);
+  const r = P.planDay(w, "2026-11-02", 0.5);
+  assert.deepEqual(r.plan, [{ itemId: "d1", qty: 3, min: 30, daily: true }]);
+  assert.deepEqual(r.skipped, [{ itemId: "d2", qty: 1, min: 60, daily: true }, { itemId: "n", qty: 1, min: 10 }]);
+  assert.equal(r.alloc.dailyShort, true);
+});
+
+test("4.2 休みの日は毎日やる項目を入れない。カテゴリーがなければ今までどおり優先度順", () => {
+  const w = catWeek([
+    { id: "d1", name: "投稿", unit: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: 3, dailyMin: 30 },
+    { id: "n", name: "出品", unit: "件", target: 7, minutes: 60, priority: 2 },
+  ], ["2026-11-02"]);
+  const r = P.planDay(w, "2026-11-02", 2);
+  assert.deepEqual(r.plan, [{ itemId: "n", qty: 1, min: 60 }]);
+  assert.deepEqual(r.skipped, []);
+});
+
+test("4.3 毎日やる項目の残りの作業時間は「今かかっている時間 ÷ 1日にやる量」で数える", () => {
+  const w = catWeek([{ id: "d1", name: "投稿", unit: "投稿", target: 21, minutes: 99, priority: 1, daily: true, dailyQty: 3, dailyMin: 30 }]);
+  assert.equal(P.weekProgress(w, "2026-11-02").remainingMin, 210);
+  assert.equal(P.perUnitMin({ minutes: 15 }), 15);
+});
+
+test("4.7 今日の内訳: 予定は作った時点の区分、実績は予定の区分か今の区分で数える", () => {
+  const items = [
+    { id: "daily", name: "投稿", daily: true, dailyQty: 3, dailyMin: 30 },
+    { id: "coco", name: "出品", categoryId: "c_coco" },
+    { id: "extra", name: "掃除" }, // 予定外にやった（その他）
+  ];
+  const day = {
+    hours: 3,
+    plan: [
+      { itemId: "daily", qty: 3, min: 30, daily: true },
+      { itemId: "coco", qty: 7, min: 70, categoryId: "c_coco" },
+      { itemId: "old", qty: 1, min: 10, categoryId: "c_deleted" }, // 削除済みのカテゴリー → その他
+    ],
+    alloc: { dailyMin: 30, budgets: [{ categoryId: "c_coco", min: 75 }, { categoryId: "c_th", min: 45 }, { categoryId: "c_study", min: 30 }], dailyShort: false },
+    log: { daily: { qty: 3, min: 40 }, coco: { qty: 5, min: 60 }, extra: { qty: 1, min: 15 } },
+  };
+  const b = P.dayBreakdown(day, items, CATS);
+  assert.deepEqual(b.segments.map((s) => [s.key, s.budget, s.planMin, s.actualMin]), [
+    ["daily", 30, 30, 40],
+    ["c_coco", 75, 70, 60],
+    ["c_th", 45, 0, 0],
+    ["c_study", 30, 0, 0],
+    ["other", null, 10, 15],
+  ]);
+  assert.deepEqual([b.total, b.free, b.hasActual, b.dailyShort], [180, 70, true, false]);
+});
+
+test("F-13 カテゴリーの確認と、名前からカテゴリーを当てる（長い名前を優先）", () => {
+  assert.equal(P.validateCategory("ココナラ", 50, CATS), "「ココナラ」はもうあります。別の名前にしてください。");
+  assert.equal(P.validateCategory("ココナラ", 50, CATS, "c_coco"), null);
+  assert.match(P.validateCategory("", 50, CATS), /名前/);
+  assert.match(P.validateCategory("その他", 50, []), /その他/);
+  assert.match(P.validateCategory("A", 120, []), /割合/);
+  assert.match(P.validateCategory("A", "", []), /割合/);
+  assert.equal(P.guessCategory("ココナラ競合調査", CATS), "c_coco");
+  assert.equal(P.guessCategory("threads投稿分析", CATS), "c_th");
+  assert.equal(P.guessCategory("掃除", CATS), null);
+  const cats = [{ id: "s", name: "Threads", ratio: 10 }, { id: "l", name: "Threads（AI", ratio: 10 }];
+  assert.equal(P.guessCategory("Threads（AI・業務自動化）", cats), "l");
+});
+
+test("4.6 まとめて登録: 前の週の同じ名前の項目からカテゴリーと毎日やるを引き継ぐ。なければ名前から当てる", () => {
+  const weeks = {
+    a: { id: "a", start: "2026-10-26", end: "2026-11-01", items: [
+      { id: "1", name: "Threads（AI・業務自動化）", minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30 },
+      { id: "2", name: "ココナラ出品", minutes: 60, priority: 2, categoryId: "c_deleted" },
+    ] },
+  };
+  assert.deepEqual(P.itemDefaults(weeks, "Threads（AI・業務自動化）", "2026-11-02", [], CATS),
+    { minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30 });
+  assert.equal(P.itemDefaults(weeks, "ココナラ出品", "2026-11-02", [], CATS).categoryId, null); // 削除済みはその他
+  assert.equal(P.itemDefaults(weeks, "ココナラ競合調査", "2026-11-02", [], CATS).categoryId, "c_coco");
+  assert.equal(P.goalCategoryDefault("ココナラ受注", [], CATS), "c_coco");
+  assert.equal(P.goalCategoryDefault("ココナラ受注", [{ name: "ココナラ受注", categoryId: null }], CATS), null);
+
+  const rows = P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: "3", dailyMin: "30" }], "week", CATS);
+  assert.deepEqual(rows.rows[0], { name: "投稿", unit: "", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30 });
+  assert.match(P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: "0" }], "week", CATS).error, /1日にやる量/);
 });

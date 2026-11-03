@@ -4,7 +4,7 @@
   "use strict";
 
   const KEY = "pdca-planner";
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
 
   const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
@@ -17,7 +17,7 @@
   }
 
   function emptyData() {
-    return { schemaVersion: SCHEMA_VERSION, settings: {}, weeks: {}, months: {} };
+    return { schemaVersion: SCHEMA_VERSION, settings: {}, categories: [], weeks: {}, months: {} };
   }
 
   // 古い形のデータを今の形にする。既存の週・設定は消さない。
@@ -53,11 +53,35 @@
       }
       data.schemaVersion = 3;
     }
-    // 今後の形の変更はここに if (data.schemaVersion < 4) { ... } と足していく
+    // v3 → v4: カテゴリー（categories）を足す。週の項目は「カテゴリーなし・毎日やるなし」、月の目標は「カテゴリーなし」にする
+    if (data.schemaVersion < 4) {
+      if (data.categories === undefined) data.categories = [];
+      if (isObject(data.weeks)) {
+        data.weeks = Object.fromEntries(
+          Object.entries(data.weeks).map(([id, w]) => [
+            id,
+            isObject(w) && Array.isArray(w.items)
+              ? { ...w, items: w.items.map((it) => (isObject(it) ? { categoryId: null, daily: false, dailyQty: null, dailyMin: null, ...it } : it)) }
+              : w,
+          ])
+        );
+      }
+      if (isObject(data.months)) {
+        data.months = Object.fromEntries(
+          Object.entries(data.months).map(([key, m]) => [
+            key,
+            isObject(m) && Array.isArray(m.goals) ? { ...m, goals: m.goals.map((g) => (isObject(g) ? { categoryId: null, ...g } : g)) } : m,
+          ])
+        );
+      }
+      data.schemaVersion = 4;
+    }
+    // 今後の形の変更はここに if (data.schemaVersion < 5) { ... } と足していく
 
     if (data.settings === undefined) data.settings = {};
     if (data.weeks === undefined) data.weeks = {};
     if (data.months === undefined) data.months = {};
+    if (data.categories === undefined) data.categories = [];
     const error = validate(data);
     return error ? { ok: false, error } : { ok: true, data };
   }
@@ -66,6 +90,10 @@
   function validate(data) {
     if (!isObject(data.settings)) return "settings の形が正しくありません";
     if (!isObject(data.weeks)) return "weeks の形が正しくありません";
+    if (!Array.isArray(data.categories)) return "categories の形が正しくありません";
+    for (const c of data.categories) {
+      if (!isObject(c) || typeof c.id !== "string") return "カテゴリーの形が正しくありません";
+    }
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
     for (const [id, w] of Object.entries(data.weeks)) {
       if (!isObject(w)) return `週 ${id} の形が正しくありません`;

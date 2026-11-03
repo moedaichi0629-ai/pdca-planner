@@ -46,6 +46,7 @@
     hoursValue: null, // 検証で弾いた「使える時間」の入力をそのまま残す
     month: P.monthOf(todayStr()), // 月タブで表示する月（YYYY-MM）
     entryMsg: {}, // 目標 id → 手入力の実績を弾いた理由
+    catMsg: "", // カテゴリーの名前・割合を弾いた理由
     // F-11 文章からまとめて登録。scope: "month"（月タブ）/ "week"（週の設定タブ）
     // text: 貼り付けた文章 / open: 折りたたみを開いているか / draft: 確認画面の中身 / readMsg: 読み取れなかった理由 / doneMsg: 登録後に1回だけ出す
     bulk: {
@@ -82,6 +83,18 @@
   }
 
   const items = (w) => w.items || (w.items = []);
+  const cats = () => data.categories || (data.categories = []);
+
+  // カテゴリーの選択欄。未選択は「その他」
+  function categorySelect(attrs, value) {
+    const cur = P.categoryOf({ categoryId: value }, cats());
+    return `<select ${attrs}><option value=""${cur ? "" : " selected"}>その他（未選択）</option>${cats()
+      .map((c) => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`)
+      .join("")}</select>`;
+  }
+  const categoryName = (id) => cats().find((c) => c.id === id)?.name || "その他";
+  // カテゴリーの色（並び順で6色をくり返す）
+  const colorClass = (index) => `c${((index % 6) + 6) % 6}`;
   const offDays = (w) => w.offDays || [];
   const activeDate = (w) => P.defaultDate(w, todayStr(), ui.date);
 
@@ -165,7 +178,7 @@
       return `<div class="chips">${chips}</div>
         <div class="stack">
           <h2>${dlabel(date)}${off ? ' <span class="pill wait">休みの日</span>' : ""}</h2>
-          <p class="muted small">この日に作業に使える時間を入れてください。週の残りの量を残りの日数で割り、優先度の高い順に時間内へ並べます。</p>
+          <p class="muted small">この日に作業に使える時間を入れてください。毎日することを先に入れ、残りの時間を${cats().length ? "カテゴリーの割合で分けて、各カテゴリーの中で" : ""}優先度の高い順に並べます。ほかの項目の量は、週の残りの量を残りの日数で割って出します。</p>
           <div class="row">
             <label class="f">使える時間（時間）<input id="hours" type="number" min="0.5" max="24" step="0.5" inputmode="decimal" value="${esc(hours)}" placeholder="例 3"></label>
             <button type="button" class="btn end" data-act="make-plan">予定を作る</button>
@@ -199,6 +212,7 @@
         <div><b>${fmtMin(sum.planMin)}</b><span>予定</span></div>
         <div><b>${fmtMin(sum.actualMin)}</b><span>実際にかかった時間</span></div>
       </div>
+      ${breakdownHtml(w, day)}
       <div>${rows}</div>
       ${skipHtml}
       ${extraHtml}
@@ -209,6 +223,32 @@
       ${day.closed
         ? `<p class="note">この日は締め済みです。進捗の「予定通り／遅れ」の判定にこの日の実績が含まれます。</p>`
         : `<p class="note">作業が終わったら「この日を締める」を押すと、進捗の判定にこの日が加わります。</p>`}`;
+  }
+
+  // F-13 今日の内訳（毎日すること／カテゴリー／その他／余り）
+  function breakdownHtml(w, day) {
+    const b = P.dayBreakdown(day, items(w), cats());
+    if (!b.total) return "";
+    const planned = b.segments.filter((x) => x.planMin > 0);
+    const scale = Math.max(b.total, planned.reduce((s, x) => s + x.planMin, 0));
+    const cls = (x) => (x.kind === "category" ? colorClass(x.index) : x.kind);
+    const bar = [...planned.map((x) => ({ cls: cls(x), min: x.planMin, name: x.name })), ...(b.free ? [{ cls: "free", min: b.free, name: "余り" }] : [])]
+      .map((x) => `<i class="seg ${x.cls}" style="width:${((x.min / scale) * 100).toFixed(2)}%" title="${esc(x.name)} ${fmtMin(x.min)}"></i>`)
+      .join("");
+    const label = [...planned.map((x) => `${x.name} ${fmtMin(x.planMin)}`), `余り ${fmtMin(b.free)}`].join("、");
+    const rows = b.segments
+      .map((x) => {
+        const budget = x.budget !== null && x.kind === "category" ? `<span class="muted">（割り当て ${fmtMin(x.budget)}）</span>` : "";
+        const actual = b.hasActual ? `<span>→ 実際 <b>${fmtMin(x.actualMin)}</b></span>` : "";
+        return `<li><span class="sw ${cls(x)}"></span><span class="bd-name">${esc(x.name)}</span><span class="bd-val"><span>予定 <b>${fmtMin(x.planMin)}</b></span>${budget}${actual}</span></li>`;
+      })
+      .join("");
+    return `<div class="stack breakdown">
+      <h3>今日の内訳</h3>
+      <div class="stackbar" role="img" aria-label="${esc(label)}">${bar}</div>
+      <ul class="bd-list">${rows}<li><span class="sw free"></span><span class="bd-name">余り</span><span class="bd-val"><b>${fmtMin(b.free)}</b></span></li></ul>
+      ${b.dailyShort ? `<p class="warn-text">毎日することだけで時間が足りません。入らなかった分は下の「今日は入らなかった」に出しています。</p>` : ""}
+    </div>`;
   }
 
   function taskRow(it, plan, l) {
@@ -310,6 +350,7 @@
       </div>
       <p class="small error">${esc(ui.weekMsg)}</p>
       <div class="stack"><h3>作業する日（押すと休みの日に切り替わります）</h3><div class="chips">${offChips}</div></div>
+      ${categoriesSection()}
       <div class="stack">
         <div class="row between"><h3>週の目標</h3><button type="button" class="btn ghost" data-act="add-item">項目を追加</button></div>
         ${itemsHtml
@@ -322,21 +363,68 @@
       ${dataSection()}`;
   }
 
+  // F-13 カテゴリーと時間の割合（全体で1つ）
+  function categoriesSection() {
+    const list = cats();
+    const total = P.ratioTotal(list);
+    const rows = list
+      .map((c, i) => {
+        const k = esc(c.id);
+        const armed = ui.armed === "cat:" + c.id;
+        return `<div class="cat-row">
+          <span class="sw ${colorClass(i)}" aria-hidden="true"></span>
+          <label class="f wide">名前<input id="cname-${k}" data-act="cat" data-field="name" data-cat="${k}" value="${esc(c.name)}"></label>
+          <label class="f">割合（%）<input id="cratio-${k}" type="number" min="0" max="100" step="1" data-act="cat" data-field="ratio" data-cat="${k}" value="${esc(c.ratio)}"></label>
+          <button type="button" class="btn danger end${armed ? " armed" : ""}" data-act="del-cat" data-cat="${k}">${armed ? "もう一度押すと削除" : "削除"}</button>
+        </div>`;
+      })
+      .join("");
+    let note = "";
+    if (list.length && total === 0) note = `<p class="small warn-text">割合がすべて0%です。カテゴリーで分ける時間がないので、各カテゴリーの項目は余った時間だけで入れます。</p>`;
+    else if (list.length && total !== 100) note = `<p class="small warn-text">合計 ${total}%（100%ではありません）。合計に対する比で分けます（例：${esc(list[0].name)}は ${Math.round((Math.max(0, P.num(list[0].ratio)) / total) * 100)}%として扱います）。</p>`;
+    return `<div class="stack">
+      <div class="row between"><h3>カテゴリー（時間の割合）</h3><button type="button" class="btn ghost" data-act="add-cat">カテゴリーを追加</button></div>
+      ${list.length
+        ? `<p class="small muted">予定を作るとき、毎日することを引いた残りの時間をこの割合で分けます。カテゴリーを選んでいない項目は「その他」として、カテゴリーで余った時間だけを使います。すべての週で共通です。</p>
+           <div class="items">${rows}</div>
+           <p class="small muted">合計 <span class="num">${total}</span>%</p>`
+        : `<p class="note">カテゴリーがないときは、毎日することのあと、優先度の高い順に入れます。「ココナラ 50%・Threads 30%」のように時間の割合を決めると、その割合で予定を作ります。</p>`}
+      ${note}
+      <p class="small error">${esc(ui.catMsg)}</p>
+    </div>`;
+  }
+
   function itemRow(it) {
     const k = esc(it.id);
     const avg = P.avgMinutesPerUnit(data.weeks, it.name);
+    const daily = !!it.daily;
+    // 毎日やる項目は「今かかっている時間 = 平均 × 1日にやる量」に反映する
+    const avgTarget = daily ? Math.round((avg ?? 0) * P.num(it.dailyQty)) : Math.round(avg ?? 0);
+    const avgCur = daily ? P.num(it.dailyMin) : P.num(it.minutes);
     const avgHtml = avg != null
-      ? `実績の平均 ${fmtMin(avg)}／${esc(it.unit || "回")}${Math.round(avg) !== P.num(it.minutes) ? ` <button type="button" class="btn quiet" data-act="apply-avg" data-item="${k}">標準時間に反映</button>` : ""}`
+      ? `実績の平均 ${fmtMin(avg)}／${esc(it.unit || "回")}${avgTarget !== avgCur && (!daily || P.isDaily(it)) ? ` <button type="button" class="btn quiet" data-act="apply-avg" data-item="${k}">${daily ? `今かかっている時間に反映（${fmtMin(avgTarget)}）` : "標準時間に反映"}</button>` : ""}`
       : "実績が入ると、1回あたりの平均時間が出ます";
+    const w = curWeek();
+    const wd = w ? P.workdays(w).length : 0;
+    const dailyFields = daily
+      ? `<label class="f">1日にやる量<input id="dailyQty-${k}" type="number" min="0" step="any" data-act="item" data-field="dailyQty" data-item="${k}" value="${esc(it.dailyQty)}"></label>
+        <label class="f">今かかっている時間(分)<input id="dailyMin-${k}" type="number" min="0" step="5" data-act="item" data-field="dailyMin" data-item="${k}" value="${esc(it.dailyMin)}"></label>
+        <p class="small ${P.isDaily(it) ? "muted" : "warn-text"} full">${P.isDaily(it)
+          ? `稼働日は毎日 ${fmtNum(it.dailyQty)}${esc(it.unit)}（${fmtMin(P.num(it.dailyMin))}）を先に入れます。週の目標量の目安：${fmtNum(it.dailyQty)} × 稼働日 ${wd}日 = ${fmtNum(P.num(it.dailyQty) * wd)}${esc(it.unit)}`
+          : "1日にやる量を0より大きい数で入れてください。入れるまでは毎日やる項目として扱いません。"}</p>`
+      : "";
     const armed = ui.armed === it.id;
     return `<div class="item">
       <label class="f wide">やること<input id="name-${k}" data-act="item" data-field="name" data-item="${k}" value="${esc(it.name)}" placeholder="例 ココナラ商品の出品"></label>
       <label class="f">週の目標量<input id="target-${k}" type="number" min="0" step="1" data-act="item" data-field="target" data-item="${k}" value="${esc(it.target)}"></label>
       <label class="f">単位<input id="unit-${k}" data-act="item" data-field="unit" data-item="${k}" value="${esc(it.unit)}" placeholder="件"></label>
-      <label class="f">1回の時間(分)<input id="minutes-${k}" type="number" min="0" step="5" data-act="item" data-field="minutes" data-item="${k}" value="${esc(it.minutes)}"></label>
+      ${daily ? "" : `<label class="f">1回の時間(分)<input id="minutes-${k}" type="number" min="0" step="5" data-act="item" data-field="minutes" data-item="${k}" value="${esc(it.minutes)}"></label>`}
       <label class="f">優先度<select id="priority-${k}" data-act="item" data-field="priority" data-item="${k}">${[1, 2, 3, 4, 5]
         .map((p) => `<option value="${p}"${P.num(it.priority) === p ? " selected" : ""}>${p}${p === 1 ? "（最優先）" : ""}</option>`)
         .join("")}</select></label>
+      <label class="f">カテゴリー${categorySelect(`id="category-${k}" data-act="item" data-field="categoryId" data-item="${k}"`, it.categoryId)}</label>
+      <label class="row small daily-check"><input type="checkbox" id="daily-${k}" data-act="item" data-field="daily" data-item="${k}"${daily ? " checked" : ""}>毎日やる</label>
+      ${dailyFields}
       <div class="foot"><span>${avgHtml}</span><button type="button" class="btn danger${armed ? " armed" : ""}" data-act="del-item" data-item="${k}">${armed ? "もう一度押すと削除" : "削除"}</button></div>
     </div>`;
   }
@@ -409,7 +497,7 @@
         if (!g.name) warn = `<span class="warn-text">名前を入れてください。</span>`;
         else if (!x.linked) warn = `<span class="warn-text">この月の週に「${esc(g.name)}」という項目がありません。週の設定の項目名と同じ名前にすると実績を集めます。</span>`;
         return `<div class="prog">
-          <div class="row between"><span class="title">${esc(g.name) || "（名前なし）"}</span><span class="pill ${x.status.k}">${x.status.label}</span></div>
+          <div class="row between"><span class="title">${esc(g.name) || "（名前なし）"}${P.categoryOf(g, cats()) ? ` <span class="small muted">${esc(categoryName(g.categoryId))}</span>` : ""}</span><span class="pill ${x.status.k}">${x.status.label}</span></div>
           <div class="bar" role="img" aria-label="達成率${x.pct}%"><i style="width:${Math.min(100, x.pct)}%"></i>${pr.elapsed ? `<u style="left:calc(${pr.expectedPct}% - 1px)"></u>` : ""}</div>
           <div class="small muted"><span class="num">${fmtNum(x.actual)}/${fmtNum(x.target)}</span>${unit}（<span class="num">${x.pct}</span>%）${minimum}${stretch}</div>
           ${warn}
@@ -500,6 +588,7 @@
         <option value="weekly"${manual ? "" : " selected"}>週の項目から</option>
         <option value="manual"${manual ? " selected" : ""}>手で入力</option>
       </select></label>
+      <label class="f">カテゴリー${categorySelect(`id="gcategory-${k}" data-act="goal" data-field="categoryId" data-goal="${k}"`, g.categoryId)}</label>
       ${entriesHtml}
       <div class="foot"><span>${manual ? "日付・量・メモを1件ずつ入れます" : "同じ名前の週の項目の実績を合計します"}</span><button type="button" class="btn danger${armed ? " armed" : ""}" data-act="del-goal" data-goal="${k}">${armed ? "もう一度押すと削除" : "削除"}</button></div>
     </div>`;
@@ -606,11 +695,15 @@
         <label class="f">集め方<select ${attrs("source")}>
           <option value="weekly"${r.source === "manual" ? "" : " selected"}>週の項目から</option>
           <option value="manual"${r.source === "manual" ? " selected" : ""}>手で入力</option>
-        </select></label>`
-      : `${numField("minutes", "1回の時間(分)")}
+        </select></label>
+        <label class="f">カテゴリー${categorySelect(attrs("categoryId"), r.categoryId)}</label>`
+      : `${r.daily ? "" : numField("minutes", "1回の時間(分)")}
         <label class="f">優先度<select ${attrs("priority")}>${[1, 2, 3, 4, 5]
           .map((p) => `<option value="${p}"${P.num(r.priority) === p ? " selected" : ""}>${p}${p === 1 ? "（最優先）" : ""}</option>`)
-          .join("")}</select></label>`;
+          .join("")}</select></label>
+        <label class="f">カテゴリー${categorySelect(attrs("categoryId"), r.categoryId)}</label>
+        <label class="row small daily-check"><input type="checkbox" ${attrs("daily")}${r.daily ? " checked" : ""}>毎日やる</label>
+        ${r.daily ? `${numField("dailyQty", "1日にやる量")}${numField("dailyMin", "今かかっている時間(分)")}` : ""}`;
     return `<div class="bulk-row${r.include ? "" : " skip-row"}">
       <label class="row small bulk-check"><input type="checkbox" ${attrs("include")}${r.include ? " checked" : ""}>登録する</label>
       <label class="f wide">名前<input ${attrs("name")} value="${esc(r.name)}"></label>
@@ -651,6 +744,7 @@
           minimum: opt(x.minimum),
           stretch: opt(x.stretch),
           source: P.goalSourceDefault(data.weeks, month, x.name, goals),
+          categoryId: P.goalCategoryDefault(x.name, goals, cats()),
         })),
         skipped: r.skipped,
         msg: "",
@@ -667,7 +761,8 @@
         end,
         periodNote: ok ? "" : cur ? "見出しから週の期間を読み取れなかったため、今表示している週にしています。" : "見出しから週の期間を読み取れませんでした。開始日と終了日を入れてください。",
         // 最低目標・挑戦目標は週の項目では使わない
-        rows: r.rows.map((x) => ({ ...base(x), ...P.itemDefaults(data.weeks, x.name, start || t, existing?.items) })),
+        // カテゴリー・毎日やるは、登録先の週 → 前の週の同じ名前の項目 → 名前に入っているカテゴリー名の順に決める
+        rows: r.rows.map((x) => ({ ...base(x), ...P.itemDefaults(data.weeks, x.name, start || t, existing?.items, cats()) })),
         skipped: r.skipped,
         msg: "",
       };
@@ -684,7 +779,7 @@
       d.msg = msg;
       render();
     };
-    const norm = P.normalizeImportRows(d.rows, scope);
+    const norm = P.normalizeImportRows(d.rows, scope, cats());
     if (!norm.ok) return fail(norm.error);
     const summary = (res) => `追加 ${res.added}件・上書き ${res.updated}件${res.removed.length ? `・削除 ${res.removed.length}件` : ""}`;
     if (scope === "month") {
@@ -759,8 +854,8 @@
     const hours = Math.round(h * 2) / 2; // 0.5刻みにそろえる
     const date = activeDate(w);
     const day = touchDay(w, date);
-    const r = P.planDay(w, date, hours);
-    Object.assign(day, { hours, plan: r.plan, skipped: r.skipped, log: day.log || {}, closed: !!day.closed });
+    const r = P.planDay(w, date, hours, cats());
+    Object.assign(day, { hours, plan: r.plan, skipped: r.skipped, alloc: r.alloc, log: day.log || {}, closed: !!day.closed });
     data.settings.lastHours = hours;
     ui.hoursMsg = "";
     ui.hoursValue = null;
@@ -856,8 +951,37 @@
       render();
       return;
     }
+    if (act === "add-cat") {
+      const base = "新しいカテゴリー";
+      let name = base;
+      for (let n = 2; cats().some((c) => c.name === name); n++) name = `${base}${n}`;
+      const c = { id: uid("c"), name, ratio: 0 };
+      cats().push(c);
+      ui.catMsg = "";
+      persist();
+      render();
+      document.getElementById("cname-" + c.id)?.select();
+      return;
+    }
+    if (act === "del-cat") {
+      const id = el.dataset.cat;
+      if (ui.armed !== "cat:" + id) return arm("cat:" + id);
+      ui.armed = null;
+      const name = categoryName(id);
+      let n = 0;
+      // そのカテゴリーの項目・目標は「その他」に戻す（過去の予定の内訳は「その他」として数える）
+      for (const w of Object.values(data.weeks)) for (const it of w.items || []) if (it.categoryId === id) { it.categoryId = null; n++; }
+      for (const m of Object.values(data.months || {})) for (const g of m.goals || []) if (g.categoryId === id) { g.categoryId = null; n++; }
+      data.categories = cats().filter((c) => c.id !== id);
+      ui.catMsg = "";
+      ui.weekDoneMsg = `カテゴリー「${name}」を削除しました${n ? `（項目・目標 ${n}件を「その他」にしました）` : ""}。`;
+      persist();
+      render();
+      ui.weekDoneMsg = "";
+      return;
+    }
     if (act === "add-goal") {
-      const g = { id: uid("g"), name: "", unit: "", target: 1, minimum: null, stretch: null, source: "weekly", entries: [] };
+      const g = { id: uid("g"), name: "", unit: "", target: 1, minimum: null, stretch: null, source: "weekly", categoryId: null, entries: [] };
       ensureMonth(ui.month).goals.push(g);
       persist();
       render();
@@ -900,7 +1024,7 @@
     } else if (act === "replan") {
       // 予定だけ消す（実績・締めは残す）
       const day = w.days?.[activeDate(w)];
-      if (day) { delete day.plan; delete day.skipped; }
+      if (day) { delete day.plan; delete day.skipped; delete day.alloc; }
       persist();
       render();
       $("#hours")?.focus();
@@ -915,7 +1039,7 @@
       persist();
       render();
     } else if (act === "add-item") {
-      const it = { id: uid("i"), name: "", unit: "件", target: 1, minutes: 30, priority: 3 };
+      const it = { id: uid("i"), name: "", unit: "件", target: 1, minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null };
       items(w).push(it);
       persist();
       render();
@@ -955,7 +1079,8 @@
       const it = items(w).find((i) => i.id === el.dataset.item);
       const avg = it && P.avgMinutesPerUnit(data.weeks, it.name);
       if (avg != null) {
-        it.minutes = Math.round(avg);
+        if (it.daily) it.dailyMin = Math.round(avg * P.num(it.dailyQty));
+        else it.minutes = Math.round(avg);
         persist();
         render();
       }
@@ -983,9 +1108,34 @@
       else {
         const row = d.rows[Number(el.dataset.idx)];
         if (!row) return;
-        row[el.dataset.field] = el.dataset.field === "include" ? el.checked : el.value;
+        const f = el.dataset.field;
+        row[f] = f === "include" || f === "daily" ? el.checked : el.value;
+        if (f === "daily" && row.daily) {
+          // 初めて印を付けたときは、1日1単位・1回の時間を初期値にする
+          if (row.dailyQty === null || row.dailyQty === undefined || row.dailyQty === "") row.dailyQty = 1;
+          if (row.dailyMin === null || row.dailyMin === undefined || row.dailyMin === "") row.dailyMin = P.num(row.minutes) * P.num(row.dailyQty);
+        }
       }
       d.msg = "";
+      scheduleRender();
+      return;
+    }
+    if (act === "cat") {
+      const c = cats().find((x) => x.id === el.dataset.cat);
+      if (!c) return;
+      const f = el.dataset.field;
+      const name = f === "name" ? el.value.trim() : c.name;
+      const ratio = f === "ratio" ? el.value : c.ratio;
+      const err = P.validateCategory(name, ratio, cats(), c.id);
+      if (err) {
+        ui.catMsg = err + "（元に戻しました）";
+        scheduleRender();
+        return;
+      }
+      c.name = name;
+      c.ratio = Number(ratio);
+      ui.catMsg = "";
+      persist();
       scheduleRender();
       return;
     }
@@ -996,6 +1146,7 @@
       if (f === "target") g.target = Math.max(0, P.num(el.value));
       else if (f === "stretch" || f === "minimum") g[f] = el.value === "" ? null : Math.max(0, P.num(el.value));
       else if (f === "source") g.source = el.value === "manual" ? "manual" : "weekly";
+      else if (f === "categoryId") g.categoryId = P.categoryOf({ categoryId: el.value }, cats());
       else g[f] = el.value.trim();
       persist();
       scheduleRender();
@@ -1009,6 +1160,14 @@
       const f = el.dataset.field;
       if (f === "priority") it.priority = Math.min(5, Math.max(1, Math.round(P.num(el.value)) || 1));
       else if (f === "target" || f === "minutes") it[f] = Math.max(0, P.num(el.value));
+      else if (f === "dailyQty" || f === "dailyMin") it[f] = el.value === "" ? null : Math.max(0, P.num(el.value));
+      else if (f === "categoryId") it.categoryId = P.categoryOf({ categoryId: el.value }, cats());
+      else if (f === "daily") {
+        it.daily = el.checked;
+        // 初めて印を付けたときは、1日1単位・1回の時間を初期値にする
+        if (it.daily && (it.dailyQty == null || it.dailyQty === "")) it.dailyQty = 1;
+        if (it.daily && (it.dailyMin == null || it.dailyMin === "")) it.dailyMin = P.num(it.minutes) * P.num(it.dailyQty);
+      }
       else it[f] = el.value.trim();
       persist();
       scheduleRender();
