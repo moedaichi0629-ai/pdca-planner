@@ -1,9 +1,11 @@
-// 画面の描画とイベント処理。計算は Planner（src/planner.js）、保存は PlannerStorage（src/storage.js）だけを使う。
+// 画面の描画とイベント処理。計算は Planner（src/planner.js）、文章の読み取りは PlannerParser（src/parser.js）、
+// 保存は PlannerStorage（src/storage.js）だけを使う。
 (function () {
   "use strict";
 
   const P = window.Planner;
   const S = window.PlannerStorage;
+  const R = window.PlannerParser;
 
   // ---------- 表示用の小さな関数 ----------
   const $ = (s) => document.querySelector(s);
@@ -44,6 +46,12 @@
     hoursValue: null, // 検証で弾いた「使える時間」の入力をそのまま残す
     month: P.monthOf(todayStr()), // 月タブで表示する月（YYYY-MM）
     entryMsg: {}, // 目標 id → 手入力の実績を弾いた理由
+    // F-11 文章からまとめて登録。scope: "month"（月タブ）/ "week"（週の設定タブ）
+    // text: 貼り付けた文章 / open: 折りたたみを開いているか / draft: 確認画面の中身 / readMsg: 読み取れなかった理由 / doneMsg: 登録後に1回だけ出す
+    bulk: {
+      month: { text: "", open: false, draft: null, readMsg: "", doneMsg: "" },
+      week: { text: "", open: false, draft: null, readMsg: "", doneMsg: "" },
+    },
   };
 
   function setSave(state, text) {
@@ -271,6 +279,7 @@
         ${ui.weekDoneMsg ? `<p class="small msg-ok">${esc(ui.weekDoneMsg)}</p>` : ""}
         <p class="muted">月や週のPDCAで決めた「週の目標」をここに登録します。まず期間を決めてください（最大${P.MAX_WEEK_DAYS}日）。</p>
         ${createForm}
+        ${bulkSection("week")}
         ${dataSection()}`;
     }
 
@@ -307,6 +316,7 @@
           ? `<div class="items">${itemsHtml}</div>`
           : `<p class="note">まだ項目がありません。「項目を追加」から、やること・週の目標量・1回あたりの時間を登録してください。優先度1から順に、その日の時間に入れていきます。</p>`}
       </div>
+      ${bulkSection("week")}
       ${deleteBox}
       <details${ui.createMsg ? " open" : ""}><summary>新しい週を作る</summary><div style="padding-top:10px">${createForm}</div></details>
       ${dataSection()}`;
@@ -381,8 +391,9 @@
             ${canCopy ? `<button type="button" class="btn" data-act="copy-prev-goals">前の月の目標を引き継ぐ</button>` : ""}
             <button type="button" class="btn${canCopy ? " ghost" : ""}" data-act="add-goal">目標を追加</button>
           </div>
-          ${canCopy ? `<p class="small muted">引き継ぐのは名前・単位・目標量・挑戦目標・集め方だけです（${monthLabel(P.addMonths(m, -1))}の目標 ${prev.goals.length} 件）。</p>` : ""}
+          ${canCopy ? `<p class="small muted">引き継ぐのは名前・単位・目標量・最低目標・挑戦目標・集め方だけです（${monthLabel(P.addMonths(m, -1))}の目標 ${prev.goals.length} 件）。</p>` : ""}
         </div>
+        <div class="section">${bulkSection("month")}</div>
         ${reviewSection(rec)}`;
     }
 
@@ -393,13 +404,14 @@
         const g = gm[x.goalId];
         const unit = esc(g.unit);
         const stretch = x.stretch === null ? "" : ` · 挑戦 <span class="num">${fmtNum(x.stretch)}</span>${unit}（<span class="num">${x.stretchPct}</span>%）`;
+        const minimum = x.minimum === null ? "" : ` · 最低 <span class="num">${fmtNum(x.minimum)}</span>${unit}（<span class="num">${x.minimumPct}</span>%）`;
         let warn = "";
         if (!g.name) warn = `<span class="warn-text">名前を入れてください。</span>`;
         else if (!x.linked) warn = `<span class="warn-text">この月の週に「${esc(g.name)}」という項目がありません。週の設定の項目名と同じ名前にすると実績を集めます。</span>`;
         return `<div class="prog">
           <div class="row between"><span class="title">${esc(g.name) || "（名前なし）"}</span><span class="pill ${x.status.k}">${x.status.label}</span></div>
           <div class="bar" role="img" aria-label="達成率${x.pct}%"><i style="width:${Math.min(100, x.pct)}%"></i>${pr.elapsed ? `<u style="left:calc(${pr.expectedPct}% - 1px)"></u>` : ""}</div>
-          <div class="small muted"><span class="num">${fmtNum(x.actual)}/${fmtNum(x.target)}</span>${unit}（<span class="num">${x.pct}</span>%）${stretch}</div>
+          <div class="small muted"><span class="num">${fmtNum(x.actual)}/${fmtNum(x.target)}</span>${unit}（<span class="num">${x.pct}</span>%）${minimum}${stretch}</div>
           ${warn}
         </div>`;
       })
@@ -412,6 +424,7 @@
       </div>
       ${checkpointSection(rec, gm, t)}
       ${goalsSection(rec)}
+      <div class="section">${bulkSection("month")}</div>
       ${reviewSection(rec)}`;
   }
 
@@ -481,6 +494,7 @@
       <label class="f wide">名前<input id="gname-${k}" data-act="goal" data-field="name" data-goal="${k}" value="${esc(g.name)}" placeholder="例 Threads"></label>
       <label class="f">単位<input id="gunit-${k}" data-act="goal" data-field="unit" data-goal="${k}" value="${esc(g.unit)}" placeholder="件"></label>
       <label class="f">目標量<input id="gtarget-${k}" type="number" min="0" step="any" data-act="goal" data-field="target" data-goal="${k}" value="${esc(g.target)}"></label>
+      <label class="f">最低目標<input id="gminimum-${k}" type="number" min="0" step="any" data-act="goal" data-field="minimum" data-goal="${k}" value="${esc(g.minimum)}" placeholder="なし"></label>
       <label class="f">挑戦目標<input id="gstretch-${k}" type="number" min="0" step="any" data-act="goal" data-field="stretch" data-goal="${k}" value="${esc(g.stretch)}" placeholder="なし"></label>
       <label class="f">集め方<select id="gsource-${k}" data-act="goal" data-field="source" data-goal="${k}">
         <option value="weekly"${manual ? "" : " selected"}>週の項目から</option>
@@ -502,6 +516,205 @@
       ${field("issues", "課題・改善点", "例 出品が後回しになった")}
       ${field("act", "Act（次にやること）", "例 出品を朝いちばんにやる")}
     </div>`;
+  }
+
+  // ---------- F-11 文章からまとめて登録（月タブ・週の設定タブ） ----------
+  const BULK_EXAMPLE = {
+    month: "例\n💰 11月 収益化PDCA\n【Plan】\n・売上：30,000円以上\n→ 最低目標：10,000円\n→ 挑戦目標：50,000円\n・ココナラ受注：2件以上",
+    week: "例\n📅 11/2〜11/8 第2週PDCA\n【Plan】\n・Threads（AI・業務自動化）：21投稿\n・ココナラ新商品出品：1商品",
+  };
+
+  function bulkSection(scope) {
+    const b = ui.bulk[scope];
+    const done = b.doneMsg ? `<p class="small msg-ok">${esc(b.doneMsg)}</p>` : "";
+    return `<details class="bulk" data-scope="${scope}"${b.open || b.draft || b.doneMsg ? " open" : ""}>
+      <summary>文章からまとめて登録</summary>
+      <div class="stack bulk-body">
+        ${done}
+        <p class="small muted">${scope === "month" ? "月" : "週"}のPDCAの文章を貼り付けて「読み取る」を押してください。【Plan】の部分だけを読みます（全文を貼っても大丈夫です）。登録する前に1行ずつ直せます。</p>
+        <textarea id="bulk-text-${scope}" class="bulk-text" data-act="bulk-text" data-scope="${scope}" placeholder="${esc(BULK_EXAMPLE[scope])}">${esc(b.text)}</textarea>
+        <div class="row"><button type="button" class="btn${b.draft ? " ghost" : ""}" data-act="bulk-read" data-scope="${scope}">${b.draft ? "読み取り直す" : "読み取る"}</button></div>
+        <p class="small error">${esc(b.readMsg)}</p>
+        ${b.draft ? bulkConfirm(scope, b.draft) : ""}
+      </div>
+    </details>`;
+  }
+
+  // 確認画面。登録先・扱い・1行ずつの値
+  function bulkConfirm(scope, d) {
+    const isMonth = scope === "month";
+    let period;
+    let removed = [];
+    const names = d.rows.filter((r) => r.include).map((r) => ({ name: String(r.name).trim() }));
+    if (isMonth) {
+      const valid = /^\d{4}-\d{2}$/.test(d.month);
+      period = `<label class="f">登録する月<input id="bulk-month" type="month" data-act="bulk-period" data-scope="month" data-field="month" value="${esc(d.month)}"></label>
+        <p class="small ${valid ? "muted" : "error"}">${valid ? `${monthLabel(d.month)}の目標に登録します。` : "月を入れてください。"}</p>`;
+      if (valid && d.mode === "replace") removed = P.mergeMonthGoals(monthRec(d.month).goals, names, "replace", () => "").removed;
+    } else {
+      const existing = P.findWeekByRange(data.weeks, d.start, d.end);
+      const err = existing ? null : P.validateWeekRange(d.start, d.end, data.weeks);
+      const status = existing
+        ? `<p class="small muted">今ある週（${dlabel(existing.start)}〜${dlabel(existing.end)}）に登録します。</p>`
+        : err
+          ? `<p class="small error">${esc(err)}</p>`
+          : `<p class="small muted">新しい週（${dlabel(d.start)}〜${dlabel(d.end)}）を作って登録します。休みの日はあとで「作業する日」で選べます。</p>`;
+      period = `<div class="row">
+          <label class="f">開始日<input id="bulk-start" type="date" data-act="bulk-period" data-scope="week" data-field="start" value="${esc(d.start)}"></label>
+          <label class="f">終了日<input id="bulk-end" type="date" data-act="bulk-period" data-scope="week" data-field="end" value="${esc(d.end)}"></label>
+        </div>${status}`;
+      if (existing && d.mode === "replace") removed = P.mergeWeekItems(existing, names, "replace", () => "").removed;
+    }
+    const word = isMonth ? "目標" : "項目";
+    const modes = [
+      ["merge", "同じ名前は上書きし、ない名前は追加する"],
+      ["replace", `今の${word}をすべて置き換える`],
+    ]
+      .map(([v, label]) => `<label class="row small"><input type="radio" id="bulk-mode-${scope}-${v}" name="bulk-mode-${scope}" data-act="bulk-mode" data-scope="${scope}" value="${v}"${d.mode === v ? " checked" : ""}>${label}</label>`)
+      .join("");
+    const removedHtml = removed.length
+      ? `<p class="small warn-text">置き換えると消える${word}：${removed.map((x) => esc(x.name || "（名前なし）") + (x.hasRecord ? "（実績あり）" : "")).join("、")}${
+          removed.some((x) => x.hasRecord) ? (isMonth ? "。「実績あり」は手で入れた実績も消えます。" : "。「実績あり」はその項目の実績も見えなくなります。") : ""
+        }</p>`
+      : "";
+    const rows = d.rows.map((r, i) => bulkRow(scope, r, i)).join("");
+    const skipped = d.skipped.length
+      ? `<details class="bulk-skipped"><summary>読まなかった行（${d.skipped.length}行）</summary><ul>${d.skipped.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></details>`
+      : "";
+    const count = d.rows.filter((r) => r.include).length;
+    return `<div class="stack bulk-confirm">
+      <h3>読み取った結果（${d.rows.length}行・登録する ${count}行）</h3>
+      ${d.periodNote ? `<p class="small warn-text">${esc(d.periodNote)}</p>` : ""}
+      ${period}
+      <div class="stack bulk-modes"><span class="small muted">今の${word}の扱い</span>${modes}${removedHtml}</div>
+      <div class="items">${rows}</div>
+      ${skipped}
+      <p class="small error">${esc(d.msg)}</p>
+      <div class="row">
+        <button type="button" class="btn" data-act="bulk-apply" data-scope="${scope}">登録する</button>
+        <button type="button" class="btn quiet" data-act="bulk-cancel" data-scope="${scope}">やめる</button>
+      </div>
+    </div>`;
+  }
+
+  function bulkRow(scope, r, i) {
+    const attrs = (f) => `id="bulk-${scope}-${i}-${f}" data-act="bulk-row" data-scope="${scope}" data-idx="${i}" data-field="${f}"`;
+    const numField = (f, label, ph = "") =>
+      `<label class="f">${label}<input type="number" min="0" step="any" ${attrs(f)} value="${esc(r[f])}"${ph ? ` placeholder="${ph}"` : ""}></label>`;
+    const extra = scope === "month"
+      ? `${numField("minimum", "最低目標", "なし")}${numField("stretch", "挑戦目標", "なし")}
+        <label class="f">集め方<select ${attrs("source")}>
+          <option value="weekly"${r.source === "manual" ? "" : " selected"}>週の項目から</option>
+          <option value="manual"${r.source === "manual" ? " selected" : ""}>手で入力</option>
+        </select></label>`
+      : `${numField("minutes", "1回の時間(分)")}
+        <label class="f">優先度<select ${attrs("priority")}>${[1, 2, 3, 4, 5]
+          .map((p) => `<option value="${p}"${P.num(r.priority) === p ? " selected" : ""}>${p}${p === 1 ? "（最優先）" : ""}</option>`)
+          .join("")}</select></label>`;
+    return `<div class="bulk-row${r.include ? "" : " skip-row"}">
+      <label class="row small bulk-check"><input type="checkbox" ${attrs("include")}${r.include ? " checked" : ""}>登録する</label>
+      <label class="f wide">名前<input ${attrs("name")} value="${esc(r.name)}"></label>
+      ${numField("target", "目標量")}
+      <label class="f">単位<input ${attrs("unit")} value="${esc(r.unit)}"></label>
+      ${extra}
+      <div class="foot"><span class="bulk-line">元の行：${esc(r.line)}</span>${r.error ? `<span class="warn-text">${esc(r.error)}</span>` : ""}</div>
+    </div>`;
+  }
+
+  // 「読み取る」。文章を読み、確認画面の初期値を作る（まだ保存しない）
+  function bulkRead(scope) {
+    const b = ui.bulk[scope];
+    b.text = $(`#bulk-text-${scope}`)?.value ?? b.text;
+    b.doneMsg = "";
+    const t = todayStr();
+    const r = R.parsePdcaText(b.text, t);
+    if (!r.rows.length) {
+      b.draft = null;
+      b.readMsg = "「・」で始まる目標の行が見つかりませんでした。「・名前：内容」の形の行を貼り付けてください。";
+      render();
+      return;
+    }
+    b.readMsg = "";
+    const opt = (v) => (v === null || v === undefined ? "" : v);
+    const base = (x) => ({ include: x.include, name: x.name, target: opt(x.target), unit: x.unit, error: x.error, line: x.line });
+    if (scope === "month") {
+      const ok = r.period?.kind === "month";
+      const month = ok ? r.period.month : ui.month;
+      const goals = monthRec(month).goals || [];
+      b.draft = {
+        mode: "merge",
+        month,
+        periodNote: ok ? "" : `見出しから月を読み取れなかったため、表示している${monthLabel(month)}にしています。`,
+        // 最低・挑戦は文章の値（なければ空）。集め方は今の目標 → 週の項目 → 手で入力の順に決める
+        rows: r.rows.map((x) => ({
+          ...base(x),
+          minimum: opt(x.minimum),
+          stretch: opt(x.stretch),
+          source: P.goalSourceDefault(data.weeks, month, x.name, goals),
+        })),
+        skipped: r.skipped,
+        msg: "",
+      };
+    } else {
+      const ok = r.period?.kind === "week";
+      const cur = curWeek();
+      const start = ok ? r.period.start : cur?.start || "";
+      const end = ok ? r.period.end : cur?.end || "";
+      const existing = P.findWeekByRange(data.weeks, start, end);
+      b.draft = {
+        mode: "merge",
+        start,
+        end,
+        periodNote: ok ? "" : cur ? "見出しから週の期間を読み取れなかったため、今表示している週にしています。" : "見出しから週の期間を読み取れませんでした。開始日と終了日を入れてください。",
+        // 最低目標・挑戦目標は週の項目では使わない
+        rows: r.rows.map((x) => ({ ...base(x), ...P.itemDefaults(data.weeks, x.name, start || t, existing?.items) })),
+        skipped: r.skipped,
+        msg: "",
+      };
+    }
+    render();
+  }
+
+  // 「登録する」。確認画面の値をすべて書いて保存する
+  function bulkApply(scope) {
+    const b = ui.bulk[scope];
+    const d = b.draft;
+    if (!d) return;
+    const fail = (msg) => {
+      d.msg = msg;
+      render();
+    };
+    const norm = P.normalizeImportRows(d.rows, scope);
+    if (!norm.ok) return fail(norm.error);
+    const summary = (res) => `追加 ${res.added}件・上書き ${res.updated}件${res.removed.length ? `・削除 ${res.removed.length}件` : ""}`;
+    if (scope === "month") {
+      if (!/^\d{4}-\d{2}$/.test(d.month)) return fail("登録する月を入れてください。");
+      const rec = ensureMonth(d.month);
+      const res = P.mergeMonthGoals(rec.goals, norm.rows, d.mode, () => uid("g"));
+      rec.goals = res.goals;
+      ui.month = d.month;
+      b.doneMsg = `${monthLabel(d.month)}の目標を登録しました（${summary(res)}）。`;
+    } else {
+      let w = P.findWeekByRange(data.weeks, d.start, d.end);
+      if (!w) {
+        const err = P.validateWeekRange(d.start, d.end, data.weeks);
+        if (err) return fail(err);
+        w = { id: uid("w"), start: d.start, end: d.end, offDays: [], items: [], days: {} };
+        data.weeks[w.id] = w;
+      }
+      const res = P.mergeWeekItems(w, norm.rows, d.mode, () => uid("i"));
+      w.items = res.items;
+      data.settings.currentWeek = w.id;
+      ui.date = null;
+      ui.weekMsg = "";
+      b.doneMsg = `${dlabel(w.start)}〜${dlabel(w.end)} の週の項目を登録しました（${summary(res)}）。`;
+    }
+    b.draft = null;
+    b.text = "";
+    ui.armed = null;
+    persist();
+    render();
+    b.doneMsg = ""; // 1回だけ出す
   }
 
   // 削除ボタンの1回目。4秒たったら元に戻す
@@ -630,6 +843,9 @@
     }
     if (act === "import") return startImport();
     if (act === "import-confirm") return confirmImport();
+    if (act === "bulk-read") return bulkRead(el.dataset.scope);
+    if (act === "bulk-apply") return bulkApply(el.dataset.scope);
+    if (act === "bulk-cancel") { ui.bulk[el.dataset.scope].draft = null; render(); return; }
     if (act === "import-cancel") { ui.importPending = null; ui.dataMsg = { kind: "ok", text: "読み込みをやめました。今のデータはそのままです。" }; render(); return; }
 
     // 月タブ（週がなくても使える）
@@ -641,7 +857,7 @@
       return;
     }
     if (act === "add-goal") {
-      const g = { id: uid("g"), name: "", unit: "", target: 1, stretch: null, source: "weekly", entries: [] };
+      const g = { id: uid("g"), name: "", unit: "", target: 1, minimum: null, stretch: null, source: "weekly", entries: [] };
       ensureMonth(ui.month).goals.push(g);
       persist();
       render();
@@ -759,12 +975,26 @@
       render();
       return;
     }
+    if (act === "bulk-row" || act === "bulk-period" || act === "bulk-mode") {
+      const d = ui.bulk[el.dataset.scope]?.draft;
+      if (!d) return;
+      if (act === "bulk-mode") d.mode = el.value === "replace" ? "replace" : "merge";
+      else if (act === "bulk-period") d[el.dataset.field] = el.value;
+      else {
+        const row = d.rows[Number(el.dataset.idx)];
+        if (!row) return;
+        row[el.dataset.field] = el.dataset.field === "include" ? el.checked : el.value;
+      }
+      d.msg = "";
+      scheduleRender();
+      return;
+    }
     if (act === "goal") {
       const g = ensureMonth(ui.month).goals.find((x) => x.id === el.dataset.goal);
       if (!g) return;
       const f = el.dataset.field;
       if (f === "target") g.target = Math.max(0, P.num(el.value));
-      else if (f === "stretch") g.stretch = el.value === "" ? null : Math.max(0, P.num(el.value));
+      else if (f === "stretch" || f === "minimum") g[f] = el.value === "" ? null : Math.max(0, P.num(el.value));
       else if (f === "source") g.source = el.value === "manual" ? "manual" : "weekly";
       else g[f] = el.value.trim();
       persist();
@@ -824,10 +1054,21 @@
   // 振り返りメモは入力するたびに保存する（描画し直さない）
   document.addEventListener("input", (e) => {
     const el = e.target;
+    // 貼り付けた文章は描画し直しても消えないように覚えておく（保存はしない）
+    if (el.dataset?.act === "bulk-text") {
+      ui.bulk[el.dataset.scope].text = el.value;
+      return;
+    }
     if (el.dataset?.act !== "review") return;
     ensureMonth(ui.month).review[el.dataset.field] = el.value;
     persist();
   });
+
+  // 「文章からまとめて登録」の開け閉めを覚えておく（toggle は伝わらないので capture で拾う）
+  document.addEventListener("toggle", (e) => {
+    const el = e.target;
+    if (el.classList?.contains("bulk") && ui.bulk[el.dataset.scope]) ui.bulk[el.dataset.scope].open = el.open;
+  }, true);
 
   // 使える時間の欄で Enter を押したら予定を作る
   document.addEventListener("keydown", (e) => {

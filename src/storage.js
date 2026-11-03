@@ -4,7 +4,7 @@
   "use strict";
 
   const KEY = "pdca-planner";
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
@@ -39,7 +39,21 @@
       if (data.months === undefined) data.months = {};
       data.schemaVersion = 2;
     }
-    // 今後の形の変更はここに if (data.schemaVersion < 3) { ... } と足していく
+    // v2 → v3: 月の目標に最低目標（minimum）を足す。空なら null。ほかの値はそのまま
+    if (data.schemaVersion < 3) {
+      if (isObject(data.months)) {
+        data.months = Object.fromEntries(
+          Object.entries(data.months).map(([key, m]) => [
+            key,
+            isObject(m) && Array.isArray(m.goals)
+              ? { ...m, goals: m.goals.map((g) => (isObject(g) && g.minimum === undefined ? { ...g, minimum: null } : g)) }
+              : m,
+          ])
+        );
+      }
+      data.schemaVersion = 3;
+    }
+    // 今後の形の変更はここに if (data.schemaVersion < 4) { ... } と足していく
 
     if (data.settings === undefined) data.settings = {};
     if (data.weeks === undefined) data.weeks = {};

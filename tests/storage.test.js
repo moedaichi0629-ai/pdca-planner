@@ -39,21 +39,22 @@ const sampleWeek = {
 test("保存データがなければ空のデータ", () => {
   const r = S.load(fakeStorage());
   assert.equal(r.error, null);
-  assert.deepEqual(r.data, { schemaVersion: 2, settings: {}, weeks: {}, months: {} });
+  assert.deepEqual(r.data, { schemaVersion: 3, settings: {}, weeks: {}, months: {} });
 });
 
 test("保存して読み直すと同じデータ", () => {
   const st = fakeStorage();
-  const data = { schemaVersion: 2, settings: { currentWeek: "w_a", lastHours: 3 }, weeks: { w_a: sampleWeek }, months: { "2026-10": sampleMonth } };
+  const month = { ...sampleMonth, goals: sampleMonth.goals.map((g, i) => ({ ...g, minimum: i ? 10000 : null })) };
+  const data = { schemaVersion: 3, settings: { currentWeek: "w_a", lastHours: 3 }, weeks: { w_a: sampleWeek }, months: { "2026-10": month } };
   assert.equal(S.save(data, st), true);
   assert.deepEqual(S.load(st), { data, error: null, readOnly: false });
 });
 
-test("試作版のデータ（schemaVersion なし）は v2 まで移行され、中身は残る", () => {
+test("試作版のデータ（schemaVersion なし）は v3 まで移行され、中身は残る", () => {
   const st = fakeStorage({ [S.KEY]: JSON.stringify({ weeks: { w_a: sampleWeek }, settings: { lastHours: 2 } }) });
   const r = S.load(st);
   assert.equal(r.error, null);
-  assert.equal(r.data.schemaVersion, 2);
+  assert.equal(r.data.schemaVersion, 3);
   assert.deepEqual(r.data.months, {});
   assert.deepEqual(r.data.weeks.w_a, sampleWeek);
   assert.equal(r.data.settings.lastHours, 2);
@@ -114,19 +115,36 @@ test("書き出しのファイル名", () => {
   assert.equal(S.exportFileName("2026-10-28"), "pdca-planner-2026-10-28.json");
 });
 
-test("v1 のデータは v2 に移行され、週と設定はそのまま残る", () => {
+test("v1 のデータは v3 に移行され、週と設定はそのまま残る", () => {
   const v1 = { schemaVersion: 1, settings: { currentWeek: "w_a", lastHours: 3 }, weeks: { w_a: sampleWeek } };
   const st = fakeStorage({ [S.KEY]: JSON.stringify(v1) });
   const r = S.load(st);
   assert.equal(r.error, null);
-  assert.deepEqual(r.data, { ...v1, schemaVersion: 2, months: {} });
-  // 保存し直すと v2 になる
+  assert.deepEqual(r.data, { ...v1, schemaVersion: 3, months: {} });
+  // 保存し直すと v3 になる
   S.save(r.data, st);
-  assert.equal(JSON.parse(st.map.get(S.KEY)).schemaVersion, 2);
+  assert.equal(JSON.parse(st.map.get(S.KEY)).schemaVersion, 3);
 });
 
-test("v3 のデータは読み込まずに退避する", () => {
-  const st = fakeStorage({ [S.KEY]: JSON.stringify({ schemaVersion: 3, weeks: {}, settings: {}, months: {} }) });
+test("v2 のデータは v3 に移行され、月の目標に minimum: null が入る。ほかの値は消えない", () => {
+  const v2 = { schemaVersion: 2, settings: { currentWeek: "w_a" }, weeks: { w_a: sampleWeek }, months: { "2026-10": sampleMonth } };
+  const st = fakeStorage({ [S.KEY]: JSON.stringify(v2) });
+  const r = S.load(st);
+  assert.equal(r.error, null);
+  assert.equal(r.data.schemaVersion, 3);
+  assert.deepEqual(r.data.weeks, v2.weeks);
+  assert.deepEqual(r.data.settings, v2.settings);
+  assert.deepEqual(r.data.months["2026-10"], {
+    ...sampleMonth,
+    goals: sampleMonth.goals.map((g) => ({ ...g, minimum: null })),
+  });
+  // すでに minimum がある目標はそのまま
+  const keep = S.parseData(JSON.stringify({ ...v2, months: { "2026-10": { ...sampleMonth, goals: [{ ...sampleMonth.goals[0], minimum: 50 }] } } }));
+  assert.equal(keep.data.months["2026-10"].goals[0].minimum, 50);
+});
+
+test("v4 のデータは読み込まずに退避する", () => {
+  const st = fakeStorage({ [S.KEY]: JSON.stringify({ schemaVersion: 4, weeks: {}, settings: {}, months: {} }) });
   const r = S.load(st);
   assert.match(r.error, /新しい版/);
   assert.equal([...st.map.keys()].some((k) => k.startsWith(`${S.KEY}.backup.`)), true);

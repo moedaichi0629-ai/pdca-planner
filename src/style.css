@@ -131,7 +131,7 @@ summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
 .cp-goals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: .85rem; }
 .cp-goals li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 10px; }
 .cp-goals .gname { overflow-wrap: anywhere; min-width: 0; }
-.goal { display: grid; grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr)); gap: 8px; align-items: end; padding: 12px; background: var(--sunk); border-radius: 8px; }
+.goal { display: grid; grid-template-columns: minmax(0, 2fr) repeat(5, minmax(0, 1fr)); gap: 8px; align-items: end; padding: 12px; background: var(--sunk); border-radius: 8px; }
 .goal input, .goal select { width: 100%; background: var(--surface); }
 .goal .full { grid-column: 1 / -1; }
 .goal .foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; font-size: .82rem; color: var(--muted); }
@@ -148,3 +148,20 @@ summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
 textarea { font: inherit; color: var(--ink); background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; width: 100%; min-height: 4.5em; resize: vertical; }
 textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) { .bar i { transition: width .3s ease; } }
+
+/* F-11 文章からまとめて登録 */
+.section > details.bulk { border-top: 0; padding-top: 0; }
+.bulk-body { padding-top: 10px; }
+textarea.bulk-text { min-height: 12em; font-size: .9rem; }
+.bulk-confirm { background: var(--accent-soft); border-radius: 8px; padding: 12px; }
+.bulk-modes label { gap: 8px; color: var(--ink); }
+.bulk-modes input[type="radio"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); flex: none; }
+.bulk-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; align-items: end; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.bulk-row input:not([type="checkbox"]), .bulk-row select { width: 100%; background: var(--sunk); }
+.bulk-row .wide { grid-column: span 2; }
+.bulk-row .bulk-check, .bulk-row .foot { grid-column: 1 / -1; }
+.bulk-row .bulk-check { color: var(--ink); font-weight: 700; gap: 8px; }
+.bulk-row .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: .8rem; color: var(--muted); }
+.bulk-row .bulk-line { overflow-wrap: anywhere; min-width: 0; }
+.bulk-row.skip-row { opacity: .7; border-style: dashed; }
+.bulk-skipped ul { margin: 6px 0 0; padding-left: 1.2em; font-size: .82rem; color: var(--muted); overflow-wrap: anywhere; }

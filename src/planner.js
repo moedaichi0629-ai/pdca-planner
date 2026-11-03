@@ -255,8 +255,11 @@
     return !!goal.name && weeksInMonth(weeks, month).some((w) => (w.items || []).some((i) => i.name === goal.name));
   }
 
-  // 挑戦目標。空なら null
-  const stretchOf = (goal) => (goal.stretch === null || goal.stretch === undefined || goal.stretch === "" ? null : num(goal.stretch));
+  // 空（null・undefined・""）なら null、それ以外は数
+  const optNum = (v) => (v === null || v === undefined || v === "" ? null : num(v));
+  // 挑戦目標・最低目標。空なら null
+  const stretchOf = (goal) => optNum(goal.stretch);
+  const minimumOf = (goal) => optNum(goal.minimum);
   const rate = (actual, target) => (target > 0 ? Math.round((actual / target) * 100) : 0);
 
   // 月の進捗（F-08）。monthRec: { month, goals }
@@ -267,13 +270,16 @@
     const goals = (monthRec.goals || []).map((g) => {
       const target = num(g.target);
       const stretch = stretchOf(g);
+      const minimum = minimumOf(g);
       const actual = goalActual(g, weeks, month);
       return {
         goalId: g.id,
         target,
+        minimum,
         stretch,
         actual,
         pct: rate(actual, target),
+        minimumPct: minimum === null ? null : rate(actual, minimum),
         stretchPct: stretch === null ? null : rate(actual, stretch),
         status: judge(actual, target, elapsed, totalDays),
         linked: goalLinked(g, weeks, month),
@@ -315,17 +321,122 @@
     return null;
   }
 
-  // 前の月の目標を引き継ぐ。名前・単位・目標量・挑戦目標・集め方だけを写し、手入力の実績は写さない
+  // 前の月の目標を引き継ぐ。名前・単位・目標量・最低目標・挑戦目標・集め方だけを写し、手入力の実績は写さない
   function copyMonthGoals(goals, makeId) {
     return (goals || []).map((g) => ({
       id: makeId(),
       name: g.name,
       unit: g.unit,
       target: g.target,
+      minimum: minimumOf(g),
       stretch: stretchOf(g),
       source: g.source === "manual" ? "manual" : "weekly",
       entries: [],
     }));
+  }
+
+  // ---------- 4.6 文章からまとめて登録（F-11） ----------
+  const DEFAULT_ITEM = { minutes: 30, priority: 3 };
+
+  // 週の項目の「1回の時間・優先度」の初期値。
+  // 登録先の週（currentItems）に同じ名前があればその値、なければ start より前の週でいちばん新しい同じ名前の項目、なければ 30分・優先度3
+  function itemDefaults(weeks, name, start, currentItems) {
+    const pickOf = (it) => ({ minutes: num(it.minutes), priority: num(it.priority) || DEFAULT_ITEM.priority });
+    const cur = (currentItems || []).find((i) => i.name === name);
+    if (cur) return pickOf(cur);
+    const prev = Object.values(weeks || {})
+      .filter((w) => w.start < start)
+      .sort((a, b) => (a.start < b.start ? 1 : -1))
+      .map((w) => (w.items || []).find((i) => i.name === name))
+      .find(Boolean);
+    return prev ? pickOf(prev) : { ...DEFAULT_ITEM };
+  }
+
+  // 月の目標の「集め方」の初期値。今の目標に同じ名前があればその値、
+  // なければ、その月にかかる週に同じ名前の項目があれば weekly、なければ manual
+  function goalSourceDefault(weeks, month, name, currentGoals) {
+    const cur = (currentGoals || []).find((g) => g.name === name);
+    if (cur) return cur.source === "manual" ? "manual" : "weekly";
+    return goalLinked({ name, source: "weekly" }, weeks, month) ? "weekly" : "manual";
+  }
+
+  // 開始日・終了日がまったく同じ週。なければ null
+  function findWeekByRange(weeks, start, end) {
+    return Object.values(weeks || {}).find((w) => w.start === start && w.end === end) || null;
+  }
+
+  // 確認画面の行を確かめて、保存する形にする。kind: "month" | "week"
+  // 戻り値: { ok: true, rows } / { ok: false, error }。rows は登録する行だけ
+  function normalizeImportRows(rows, kind) {
+    const isNum = (v) => v !== "" && v !== null && v !== undefined && Number.isFinite(Number(v)) && Number(v) >= 0;
+    const out = [];
+    const names = new Set();
+    for (const [i, r] of (rows || []).entries()) {
+      if (!r.include) continue;
+      const at = `${i + 1}行目`;
+      const name = String(r.name ?? "").trim();
+      if (!name) return { ok: false, error: `${at}: 名前を入れてください。` };
+      if (names.has(name)) return { ok: false, error: `${at}: 「${name}」が2回あります。名前を変えるか、片方のチェックを外してください。` };
+      names.add(name);
+      if (!isNum(r.target)) return { ok: false, error: `${at}（${name}）: 目標量を0以上の数で入れてください。` };
+      const row = { name, unit: String(r.unit ?? "").trim(), target: Number(r.target) };
+      if (kind === "month") {
+        for (const [f, label] of [["minimum", "最低目標"], ["stretch", "挑戦目標"]]) {
+          if (r[f] !== "" && r[f] !== null && r[f] !== undefined && !isNum(r[f])) return { ok: false, error: `${at}（${name}）: ${label}は空にするか、0以上の数で入れてください。` };
+          row[f] = optNum(r[f]);
+        }
+        row.source = r.source === "manual" ? "manual" : "weekly";
+      } else {
+        if (!isNum(r.minutes)) return { ok: false, error: `${at}（${name}）: 1回の時間を0以上の数で入れてください。` };
+        const p = Number(r.priority);
+        if (!Number.isInteger(p) || p < 1 || p > 5) return { ok: false, error: `${at}（${name}）: 優先度は1〜5で選んでください。` };
+        row.minutes = Number(r.minutes);
+        row.priority = p;
+      }
+      out.push(row);
+    }
+    if (!out.length) return { ok: false, error: "登録する行がありません。登録したい行にチェックを入れてください。" };
+    return { ok: true, rows: out };
+  }
+
+  // 名前で突き合わせて反映する。mode: "merge"（同じ名前は上書き、ない名前は追加）/ "replace"（すべて置き換え）
+  // どちらでも同じ名前のものは id を引き継ぐので、実績は残る。hasRecord(x) は消えると実績も見えなくなるか
+  function mergeByName(list, rows, mode, makeId, build, hasRecord) {
+    const byName = new Map((list || []).map((x) => [x.name, x]));
+    const names = new Set(rows.map((r) => r.name));
+    let added = 0;
+    let updated = 0;
+    const merged = rows.map((r) => {
+      const cur = byName.get(r.name);
+      if (cur) updated++;
+      else added++;
+      return cur ? { ...cur, ...r } : build(r, makeId());
+    });
+    if (mode === "replace") {
+      const removed = (list || []).filter((x) => !names.has(x.name)).map((x) => ({ name: x.name, hasRecord: hasRecord(x) }));
+      return { list: merged, added, updated, removed };
+    }
+    // merge: 今の並びを保ち、上書きした行はその場所で置き換え、新しい行は後ろに足す
+    const mergedByName = new Map(merged.map((x) => [x.name, x]));
+    const kept = (list || []).map((x) => mergedByName.get(x.name) || x);
+    const fresh = merged.filter((x) => !byName.has(x.name));
+    return { list: [...kept, ...fresh], added, updated, removed: [] };
+  }
+
+  // 月の目標へ反映。rows は normalizeImportRows の結果
+  function mergeMonthGoals(goals, rows, mode, makeId) {
+    const r = mergeByName(goals, rows, mode, makeId,
+      (row, id) => ({ id, ...row, entries: [] }),
+      (g) => (g.entries || []).length > 0);
+    return { goals: r.list, added: r.added, updated: r.updated, removed: r.removed };
+  }
+
+  // 週の項目へ反映。消える項目に、週の中の日の実績があるかも返す
+  function mergeWeekItems(week, rows, mode, makeId) {
+    const r = mergeByName(week?.items || [], rows, mode, makeId,
+      (row, id) => ({ id, ...row }),
+      (it) => daysInWeek(week).some(([, day]) => day.log?.[it.id]));
+    return { items: r.list, added: r.added, updated: r.updated, removed: r.removed };
   }
 
   const Planner = {
@@ -333,6 +444,7 @@
     sumLog, sortByPriority, planDay, elapsedDays, judge, weekProgress, avgMinutesPerUnit,
     monthOf, addMonths, daysInMonth, monthRange, isDayClosed, monthElapsedDays, weeksInMonth, goalActual, goalLinked,
     monthProgress, monthCheckpoints, validateMonthEntry, copyMonthGoals,
+    itemDefaults, goalSourceDefault, findWeekByRange, normalizeImportRows, mergeMonthGoals, mergeWeekItems,
   };
 
   if (typeof module !== "undefined" && module.exports) {

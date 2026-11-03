@@ -333,8 +333,100 @@ test("F-08 前の月の目標を引き継ぐ: 名前・単位・目標量・挑�
   let n = 0;
   const copied = P.copyMonthGoals([weeklyGoal, salesGoal], () => `new_${++n}`);
   assert.deepEqual(copied, [
-    { id: "new_1", name: "Threads", unit: "投稿", target: 93, stretch: null, source: "weekly", entries: [] },
-    { id: "new_2", name: "売上", unit: "円", target: 50000, stretch: 100000, source: "manual", entries: [] },
+    { id: "new_1", name: "Threads", unit: "投稿", target: 93, minimum: null, stretch: null, source: "weekly", entries: [] },
+    { id: "new_2", name: "売上", unit: "円", target: 50000, minimum: null, stretch: 100000, source: "manual", entries: [] },
   ]);
   assert.equal(salesGoal.entries.length, 2); // 元の月の実績は残る
+});
+
+test("4.5 最低目標がある行は、最低・目標・挑戦の3つの達成率を出す。判定は目標に対して出す", () => {
+  const g = { ...salesGoal, minimum: 20000, entries: [{ id: "e", date: "2026-10-10", qty: 30000 }] };
+  const pr = P.monthProgress({ month: "2026-10", goals: [g, weeklyGoal] }, {}, "2026-10-29");
+  assert.deepEqual([pr.goals[0].minimumPct, pr.goals[0].pct, pr.goals[0].stretchPct], [150, 60, 30]);
+  assert.equal(pr.goals[0].status.label, "遅れ"); // 30000 / (50000×28/31) = 66%
+  assert.equal(pr.goals[1].minimumPct, null);
+  const copied = P.copyMonthGoals([g], () => "x");
+  assert.equal(copied[0].minimum, 20000);
+});
+
+// ---------- 4.6 文章からまとめて登録 ----------
+test("4.6 週の項目の初期値: 登録先の週 → 前の週の同じ名前 → 30分・優先度3", () => {
+  const weeks = {
+    a: { id: "a", start: "2026-10-19", end: "2026-10-25", items: [{ id: "1", name: "出品", minutes: 45, priority: 2 }] },
+    b: { id: "b", start: "2026-10-26", end: "2026-11-01", items: [{ id: "2", name: "出品", minutes: 60, priority: 1 }] },
+    c: { id: "c", start: "2026-11-09", end: "2026-11-15", items: [{ id: "3", name: "出品", minutes: 99, priority: 5 }] },
+  };
+  assert.deepEqual(P.itemDefaults(weeks, "出品", "2026-11-02"), { minutes: 60, priority: 1 }); // 後ろの週は見ない
+  assert.deepEqual(P.itemDefaults(weeks, "出品", "2026-11-02", [{ name: "出品", minutes: 15, priority: 4 }]), { minutes: 15, priority: 4 });
+  assert.deepEqual(P.itemDefaults(weeks, "学習", "2026-11-02"), { minutes: 30, priority: 3 });
+});
+
+test("4.6 月の目標の集め方の初期値: 今の目標 → その月の週に同じ名前があれば週の項目から → 手で入力", () => {
+  const weeks = { a: { id: "a", start: "2026-10-26", end: "2026-11-01", items: [{ id: "1", name: "Threads" }] } };
+  assert.equal(P.goalSourceDefault(weeks, "2026-11", "Threads"), "weekly");
+  assert.equal(P.goalSourceDefault(weeks, "2026-12", "Threads"), "manual");
+  assert.equal(P.goalSourceDefault(weeks, "2026-11", "売上"), "manual");
+  assert.equal(P.goalSourceDefault(weeks, "2026-11", "Threads", [{ name: "Threads", source: "manual" }]), "manual");
+});
+
+test("4.6 確認画面の行の確認", () => {
+  const ok = P.normalizeImportRows([
+    { include: true, name: " 売上 ", target: "30000", unit: "円", minimum: "10000", stretch: "", source: "manual" },
+    { include: false, name: "note", target: "" },
+  ], "month");
+  assert.deepEqual(ok, { ok: true, rows: [{ name: "売上", unit: "円", target: 30000, minimum: 10000, stretch: null, source: "manual" }] });
+  const w = P.normalizeImportRows([{ include: true, name: "出品", target: 3, unit: "件", minutes: "60", priority: "1", minimum: 9 }], "week");
+  assert.deepEqual(w.rows, [{ name: "出品", unit: "件", target: 3, minutes: 60, priority: 1 }]); // 週では最低・挑戦を使わない
+  assert.match(P.normalizeImportRows([{ include: true, name: "", target: 1 }], "month").error, /名前/);
+  assert.match(P.normalizeImportRows([{ include: true, name: "a", target: "" }], "month").error, /目標量/);
+  assert.match(P.normalizeImportRows([{ include: true, name: "a", target: -1 }], "month").error, /目標量/);
+  assert.match(P.normalizeImportRows([{ include: true, name: "a", target: 1, stretch: -5 }], "month").error, /挑戦目標/);
+  assert.match(P.normalizeImportRows([{ include: true, name: "a", target: 1 }, { include: true, name: "a", target: 2 }], "month").error, /2回/);
+  assert.match(P.normalizeImportRows([{ include: true, name: "a", target: 1, minutes: 30, priority: 6 }], "week").error, /優先度/);
+  assert.match(P.normalizeImportRows([{ include: false, name: "a", target: 1 }], "month").error, /登録する行がありません/);
+});
+
+test("4.6 月の目標への反映: 上書き・追加と、すべて置き換え（同じ名前は id と実績を引き継ぐ）", () => {
+  const goals = [
+    { id: "g1", name: "売上", unit: "円", target: 50000, minimum: null, stretch: 100000, source: "manual", entries: [{ id: "e", date: "2026-11-01", qty: 1 }] },
+    { id: "g2", name: "受注", unit: "件", target: 1, minimum: null, stretch: null, source: "manual", entries: [{ id: "e2", date: "2026-11-01", qty: 1 }] },
+    { id: "g3", name: "学習", unit: "講義", target: 4, minimum: null, stretch: null, source: "weekly", entries: [] },
+  ];
+  const rows = [
+    { name: "売上", unit: "円", target: 30000, minimum: 10000, stretch: null, source: "manual" },
+    { name: "ブログ", unit: "記事", target: 12, minimum: null, stretch: null, source: "manual" },
+  ];
+  let n = 0;
+  const m = P.mergeMonthGoals(goals, rows, "merge", () => `new${++n}`);
+  assert.deepEqual(m.goals.map((g) => [g.id, g.name, g.target, g.stretch]), [["g1", "売上", 30000, null], ["g2", "受注", 1, null], ["g3", "学習", 4, null], ["new1", "ブログ", 12, null]]);
+  assert.equal(m.goals[0].entries.length, 1);
+  assert.deepEqual([m.added, m.updated, m.removed], [1, 1, []]);
+
+  const r = P.mergeMonthGoals(goals, rows, "replace", () => "new");
+  assert.deepEqual(r.goals.map((g) => [g.id, g.name]), [["g1", "売上"], ["new", "ブログ"]]);
+  assert.equal(r.goals[0].entries.length, 1);
+  assert.deepEqual(r.removed, [{ name: "受注", hasRecord: true }, { name: "学習", hasRecord: false }]);
+  assert.equal(goals[0].target, 50000); // 元の配列は変えない
+});
+
+test("4.6 週の項目への反映: 消える項目に週の中の実績があるかを返す", () => {
+  const week = {
+    id: "w", start: "2026-11-02", end: "2026-11-08",
+    items: [{ id: "i1", name: "出品", unit: "件", target: 3, minutes: 60, priority: 1 }, { id: "i2", name: "学習", unit: "講義", target: 2, minutes: 60, priority: 3 }],
+    days: { "2026-11-02": { log: { i2: { qty: 1, min: 60 } } } },
+  };
+  const rows = [{ name: "出品", unit: "件", target: 5, minutes: 45, priority: 2 }];
+  const m = P.mergeWeekItems(week, rows, "merge", () => "x");
+  assert.deepEqual(m.items.map((i) => [i.id, i.target, i.minutes]), [["i1", 5, 45], ["i2", 2, 60]]);
+  const r = P.mergeWeekItems(week, rows, "replace", () => "x");
+  assert.deepEqual(r.items.map((i) => i.id), ["i1"]);
+  assert.deepEqual(r.removed, [{ name: "学習", hasRecord: true }]);
+  // 新しい週（week なし）
+  assert.deepEqual(P.mergeWeekItems(null, rows, "replace", () => "n").items, [{ id: "n", ...rows[0] }]);
+});
+
+test("4.6 開始日・終了日が同じ週を探す", () => {
+  const weeks = { a: { id: "a", start: "2026-11-02", end: "2026-11-08" } };
+  assert.equal(P.findWeekByRange(weeks, "2026-11-02", "2026-11-08").id, "a");
+  assert.equal(P.findWeekByRange(weeks, "2026-11-02", "2026-11-07"), null);
 });
