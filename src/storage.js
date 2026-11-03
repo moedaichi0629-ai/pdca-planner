@@ -101,6 +101,7 @@
       if (w.items !== undefined && !Array.isArray(w.items)) return `週 ${id} の items の形が正しくありません`;
       for (const it of w.items || []) {
         if (isObject(it) && it.weekdays !== undefined && !Array.isArray(it.weekdays)) return `週 ${id} の項目「${it.name ?? ""}」の weekdays の形が正しくありません`;
+        if (isObject(it) && it.minDailyMin != null && !(typeof it.minDailyMin === "number" && Number.isFinite(it.minDailyMin) && it.minDailyMin >= 0)) return `週 ${id} の項目「${it.name ?? ""}」の minDailyMin の形が正しくありません`;
       }
       if (w.days !== undefined && !isObject(w.days)) return `週 ${id} の days の形が正しくありません`;
       for (const [d, day] of Object.entries(w.days || {})) {

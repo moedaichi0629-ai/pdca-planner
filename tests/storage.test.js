@@ -192,6 +192,14 @@ test("今日のメモ（notes）は、なくてもよく、形が違えば読み
   assert.equal(S.parseData(JSON.stringify(week({ "2026-10-27": { notes: "x" } }))).ok, false);
 });
 
+test("1日の最低時間（minDailyMin）は、なくてもよく、数でなければ読み込まない", () => {
+  const week = (it) => ({ schemaVersion: 4, settings: {}, categories: [], months: {}, weeks: { w_a: { ...sampleWeek, items: [{ ...sampleWeek.items[0], ...it }] } } });
+  assert.equal(S.parseData(JSON.stringify(week({ minDailyMin: 30 }))).ok, true);
+  assert.equal(S.parseData(JSON.stringify(week({ minDailyMin: null }))).ok, true);
+  assert.equal(S.parseData(JSON.stringify(week({ minDailyMin: "30" }))).ok, false);
+  assert.equal(S.parseData(JSON.stringify(week({ minDailyMin: -5 }))).ok, false);
+});
+
 test("months の形が違うデータは読み込まない", () => {
   assert.equal(S.parseData(JSON.stringify({ schemaVersion: 2, weeks: {}, months: [] })).ok, false);
   assert.equal(S.parseData(JSON.stringify({ schemaVersion: 2, weeks: {}, months: { "10月": {} } })).ok, false);

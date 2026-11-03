@@ -110,6 +110,11 @@
     return workdays(week).filter((d) => wds.includes(dayOfWeek(d)));
   }
 
+  // F-15 1日の最低時間（分）。毎日やる項目・1回の時間が0の項目には使わない（0 を返す）
+  const minDailyOf = (it) => (isDaily(it) || num(it.minutes) <= 0 ? 0 : Math.max(0, num(it.minDailyMin)));
+  // 1日の最低時間のある項目は、時間（分）で割り振り、量は「分 ÷ 1回の時間」の小数第2位まで（1単位の途中まで）にする
+  const round2 = (v) => Math.round(v * 100) / 100;
+
   // 1単位あたりの時間（分）。毎日やる項目は「今かかっている時間 ÷ 1日にやる量」、それ以外は1回の時間
   const perUnitMin = (it) => (isDaily(it) ? Math.max(0, num(it.dailyMin)) / num(it.dailyQty) : Math.max(0, num(it.minutes)));
 
@@ -173,11 +178,14 @@
     const dailyPlan = [];
     const skipped = [];
     const entries = []; // 毎日やる項目以外 { it, need, qty }
+    const reservedOf = {}; // F-15 1日の最低時間として先に取った分（カテゴリー id → 分。カテゴリーなしは ""）
     let dailyMin = 0;
     let dailyShort = false;
 
     for (const it of sortByPriority(week.items || [])) {
-      const remaining = Math.max(0, num(it.target) - sumLog(week, it.id, (d) => d < date));
+      const minD = minDailyOf(it);
+      let remaining = Math.max(0, num(it.target) - sumLog(week, it.id, (d) => d < date));
+      if (minD > 0) remaining = round2(remaining);
       if (remaining <= 0) continue;
       if (isDaily(it)) {
         if (isOff) continue; // 休みの日は毎日やる項目を入れない
@@ -206,12 +214,34 @@
         else if (future.length) continue;
         else need = remaining;
       }
-      entries.push({ it, need, qty: 0 });
+      const e = { it, need, qty: 0 };
+      if (minD > 0) {
+        // F-15 必要な時間 = max(必要量 × 1回の時間, 1日の最低時間)。ただし残りの量の時間まで
+        const remMin = Math.round(remaining * num(it.minutes));
+        e.remaining = remaining;
+        e.needMin = Math.min(remMin, Math.max(Math.round(Math.min(need, remaining) * num(it.minutes)), isOff ? 0 : minD));
+        e.min = 0;
+        // 1日の最低時間は、作業する日に毎日することと同じように先に取る
+        if (!isOff) {
+          const m = Math.min(minD, remMin, avail);
+          e.min = m;
+          avail -= m;
+          const c = categoryOf(it, cats) || "";
+          reservedOf[c] = (reservedOf[c] || 0) + m;
+        }
+      }
+      entries.push(e);
     }
 
     // budget 分の中で、entry の残りの必要量をできるだけ入れる。使った分を返す
     const fill = (e, budget) => {
       const per = Math.max(0, num(e.it.minutes));
+      if (e.needMin !== undefined) {
+        // 1日の最低時間のある項目は、分で入れる（1単位の途中まででも入れる）
+        const m = Math.max(0, Math.min(e.needMin - e.min, budget));
+        e.min += m;
+        return m;
+      }
       const left = e.need - e.qty;
       const q = per > 0 ? Math.min(left, Math.floor(budget / per)) : left;
       e.qty += q;
@@ -225,6 +255,8 @@
       // 2. カテゴリーの毎日することは、そのカテゴリーの持ち時間に含める
       const dailyOf = {};
       for (const r of dailyPlan) if (r.categoryId) dailyOf[r.categoryId] = (dailyOf[r.categoryId] || 0) + r.min;
+      // 1日の最低時間として先に取った分も、そのカテゴリーの持ち時間に含める（カテゴリーなしの分は含めない）
+      for (const [c, m] of Object.entries(reservedOf)) if (c) dailyOf[c] = (dailyOf[c] || 0) + m;
       const catDaily = Object.values(dailyOf).reduce((s, v) => s + v, 0);
       const base = avail + catDaily; // 使える時間 − カテゴリーなしの毎日すること
       budgets = splitBudgets(cats, base, dailyOf);
@@ -245,6 +277,15 @@
     const plan = [...dailyPlan];
     for (const e of entries) {
       const per = Math.max(0, num(e.it.minutes));
+      if (e.needMin !== undefined) {
+        // 量は分から出す。残りの量の時間をすべて入れたときは、残りの量そのもの
+        const remMin = Math.round(e.remaining * per);
+        const qtyOf = (m) => (m >= remMin ? e.remaining : Math.min(e.remaining, round2(m / per)));
+        if (e.min > 0) plan.push(row(e.it, qtyOf(e.min), e.min));
+        const leftMin = e.needMin - e.min;
+        if (leftMin > 0) skipped.push(row(e.it, round2(qtyOf(e.needMin) - qtyOf(e.min)), leftMin));
+        continue;
+      }
       if (e.qty > 0) plan.push(row(e.it, e.qty, e.qty * per));
       if (e.qty < e.need) skipped.push(row(e.it, e.need - e.qty, (e.need - e.qty) * per));
     }
@@ -586,6 +627,7 @@
       dailyQty: optNum(it.dailyQty),
       dailyMin: optNum(it.dailyMin),
       weekdays: weekdaysOf(it).sort(),
+      minDailyMin: it.daily ? null : optNum(it.minDailyMin),
     });
     const cur = (currentItems || []).find((i) => i.name === name);
     if (cur) return pickOf(cur);
@@ -595,7 +637,7 @@
       .map((w) => (w.items || []).find((i) => i.name === name))
       .find(Boolean);
     if (prev) return pickOf(prev);
-    return { ...DEFAULT_ITEM, categoryId: guessCategory(name, categories), daily: false, dailyQty: null, dailyMin: null, weekdays: [] };
+    return { ...DEFAULT_ITEM, categoryId: guessCategory(name, categories), daily: false, dailyQty: null, dailyMin: null, weekdays: [], minDailyMin: null };
   }
 
   // 月の目標のカテゴリーの初期値。今の目標に同じ名前があればそのカテゴリー、なければ名前に入っているカテゴリー名
@@ -654,6 +696,7 @@
         row.dailyQty = isNum(r.dailyQty) ? Number(r.dailyQty) : null;
         row.dailyMin = isNum(r.dailyMin) ? Number(r.dailyMin) : null;
         row.weekdays = row.daily ? [] : weekdaysOf({ weekdays: r.weekdays }).sort();
+        row.minDailyMin = row.daily || !isNum(r.minDailyMin) || Number(r.minDailyMin) <= 0 ? null : Number(r.minDailyMin);
       }
       out.push(row);
     }
@@ -708,7 +751,7 @@
     monthProgress, monthCheckpoints, validateMonthEntry, copyMonthGoals,
     itemDefaults, goalSourceDefault, findWeekByRange, normalizeImportRows, mergeMonthGoals, mergeWeekItems,
     isDaily, perUnitMin, categoryOf, ratioTotal, validateCategory, guessCategory, goalCategoryDefault, dayBreakdown,
-    validateExtra, dayOfWeek, weekdaysOf, hasWeekdays, weekdayDays,
+    validateExtra, dayOfWeek, weekdaysOf, hasWeekdays, weekdayDays, minDailyOf,
   };
 
   if (typeof module !== "undefined" && module.exports) {

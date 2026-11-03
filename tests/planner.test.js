@@ -359,7 +359,7 @@ test("4.6 週の項目の初期値: 登録先の週 → 前の週の同じ名前
   const pick = (x) => ({ minutes: x.minutes, priority: x.priority });
   assert.deepEqual(pick(P.itemDefaults(weeks, "出品", "2026-11-02")), { minutes: 60, priority: 1 }); // 後ろの週は見ない
   assert.deepEqual(pick(P.itemDefaults(weeks, "出品", "2026-11-02", [{ name: "出品", minutes: 15, priority: 4 }])), { minutes: 15, priority: 4 });
-  assert.deepEqual(P.itemDefaults(weeks, "学習", "2026-11-02"), { minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [] });
+  assert.deepEqual(P.itemDefaults(weeks, "学習", "2026-11-02"), { minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [], minDailyMin: null });
 });
 
 test("4.6 月の目標の集め方の初期値: 今の目標 → その月の週に同じ名前があれば週の項目から → 手で入力", () => {
@@ -378,7 +378,7 @@ test("4.6 確認画面の行の確認", () => {
   assert.deepEqual(ok, { ok: true, rows: [{ name: "売上", unit: "円", target: 30000, minimum: 10000, stretch: null, source: "manual", categoryId: null }] });
   const w = P.normalizeImportRows([{ include: true, name: "出品", target: 3, unit: "件", minutes: "60", priority: "1", minimum: 9 }], "week");
   // 週では最低・挑戦を使わない
-  assert.deepEqual(w.rows, [{ name: "出品", unit: "件", target: 3, minutes: 60, priority: 1, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [] }]);
+  assert.deepEqual(w.rows, [{ name: "出品", unit: "件", target: 3, minutes: 60, priority: 1, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [], minDailyMin: null }]);
   assert.match(P.normalizeImportRows([{ include: true, name: "", target: 1 }], "month").error, /名前/);
   assert.match(P.normalizeImportRows([{ include: true, name: "a", target: "" }], "month").error, /目標量/);
   assert.match(P.normalizeImportRows([{ include: true, name: "a", target: -1 }], "month").error, /目標量/);
@@ -603,14 +603,14 @@ test("4.6 まとめて登録: 前の週の同じ名前の項目からカテゴ�
     ] },
   };
   assert.deepEqual(P.itemDefaults(weeks, "Threads（AI・業務自動化）", "2026-11-02", [], CATS),
-    { minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30, weekdays: [] });
+    { minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30, weekdays: [], minDailyMin: null });
   assert.equal(P.itemDefaults(weeks, "ココナラ出品", "2026-11-02", [], CATS).categoryId, null); // 削除済みはその他
   assert.equal(P.itemDefaults(weeks, "ココナラ競合調査", "2026-11-02", [], CATS).categoryId, "c_coco");
   assert.equal(P.goalCategoryDefault("ココナラ受注", [], CATS), "c_coco");
   assert.equal(P.goalCategoryDefault("ココナラ受注", [{ name: "ココナラ受注", categoryId: null }], CATS), null);
 
   const rows = P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: "3", dailyMin: "30" }], "week", CATS);
-  assert.deepEqual(rows.rows[0], { name: "投稿", unit: "", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30, weekdays: [] });
+  assert.deepEqual(rows.rows[0], { name: "投稿", unit: "", target: 21, minutes: 10, priority: 1, categoryId: "c_th", daily: true, dailyQty: 3, dailyMin: 30, weekdays: [], minDailyMin: null });
   assert.match(P.normalizeImportRows([{ include: true, name: "投稿", target: 21, minutes: 10, priority: 1, daily: true, dailyQty: "0" }], "week", CATS).error, /1日にやる量/);
 });
 
@@ -758,4 +758,70 @@ test("4.6 まとめて登録: 前の週の同じ名前の項目から曜日を�
   assert.deepEqual(rows.rows[0].weekdays, [0, 3]);
   const daily = P.normalizeImportRows([{ include: true, name: "作成", target: 21, minutes: 5, priority: 1, daily: true, dailyQty: 3, dailyMin: 15, weekdays: [0] }], "week", []);
   assert.deepEqual(daily.rows[0].weekdays, []); // 毎日やる項目では使わない
+});
+
+// ---------- F-15 1日の最低時間 ----------
+// 週 11/2(月)〜11/8(日)。ツール開発は 1件 = 180分、1日の最低時間 30分
+function minDailyWeek({ days = {}, offDays = [], tool = {} } = {}) {
+  return {
+    id: "w_md", start: "2026-11-02", end: "2026-11-08", offDays, days,
+    items: [
+      { id: "sell", name: "出品", unit: "件", target: 7, minutes: 30, priority: 1, categoryId: "c_sell" },
+      { id: "tool", name: "ツール開発", unit: "件", target: 1, minutes: 180, priority: 3, minDailyMin: 30, categoryId: "c_dev", ...tool },
+    ],
+  };
+}
+const rowOf = (rows, id) => rows.find((x) => x.itemId === id);
+
+test("4.1 1日の最低時間: 優先度が低くても最低時間は先に取り、1件の途中まで（量は小数）を予定に入れる", () => {
+  const r = P.planDay(minDailyWeek(), "2026-11-02", 1);
+  assert.deepEqual(rowOf(r.plan, "sell"), { itemId: "sell", qty: 1, min: 30 });
+  assert.deepEqual(rowOf(r.plan, "tool"), { itemId: "tool", qty: 0.17, min: 30 });
+  assert.deepEqual(rowOf(r.skipped, "tool"), { itemId: "tool", qty: 0.83, min: 150 });
+});
+
+test("4.1 1日の最低時間: 時間が余れば、最低時間より多く（最大で残り全部）入れる", () => {
+  const r = P.planDay(minDailyWeek(), "2026-11-02", 4);
+  assert.deepEqual(rowOf(r.plan, "tool"), { itemId: "tool", qty: 1, min: 180 });
+  assert.deepEqual(r.skipped, []);
+  const r2 = P.planDay(minDailyWeek(), "2026-11-02", 2); // 120分: 最低30 + 出品30 + 余り60
+  assert.deepEqual(rowOf(r2.plan, "tool"), { itemId: "tool", qty: 0.5, min: 90 });
+});
+
+test("4.1 1日の最低時間: 途中までの実績を積み上げ、残りが最低時間より少なければ残りの分だけ入れる", () => {
+  const days = {};
+  for (const d of ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"]) days[d] = { closed: true, log: { tool: { qty: 0.17, min: 30 } } };
+  const w = minDailyWeek({ days });
+  const r = P.planDay(w, "2026-11-07", 1);
+  assert.deepEqual(rowOf(r.plan, "tool"), { itemId: "tool", qty: 0.15, min: 27 });
+  days["2026-11-07"] = { closed: true, log: { tool: { qty: 0.17, min: 30 } } };
+  assert.equal(rowOf(P.planDay(w, "2026-11-08", 1).plan, "tool"), undefined); // 1.02件で終わり
+});
+
+test("4.2 1日の最低時間: カテゴリーがあれば、最低時間はそのカテゴリーの時間に含める", () => {
+  const cats = [{ id: "c_dev", name: "開発", ratio: 50 }, { id: "c_sell", name: "出品", ratio: 50 }];
+  // 120分 → 開発60（最低30を含む）・出品60。出品の余り30は割合の大きい順（同じなら登録順）で開発へ
+  const r = P.planDay(minDailyWeek(), "2026-11-02", 2, cats);
+  assert.deepEqual(rowOf(r.plan, "tool"), { itemId: "tool", qty: 0.5, min: 90, categoryId: "c_dev" });
+  assert.deepEqual(rowOf(r.plan, "sell"), { itemId: "sell", qty: 1, min: 30, categoryId: "c_sell" });
+});
+
+test("4.1 1日の最低時間: 曜日指定があれば指定した曜日だけ。休みの日・毎日やる項目には使わない", () => {
+  const w = minDailyWeek({ tool: { weekdays: [6] } });
+  assert.equal(rowOf(P.planDay(w, "2026-11-02", 1).plan, "tool"), undefined);
+  assert.deepEqual(rowOf(P.planDay(w, "2026-11-07", 1).plan, "tool"), { itemId: "tool", qty: 0.17, min: 30 });
+  // 休みの日は先に取らない（優先度順のまま）
+  const off = minDailyWeek({ offDays: ["2026-11-02"], tool: { target: 1 } });
+  off.items[0].target = 14; // 出品 2件/日 = 60分
+  assert.equal(rowOf(P.planDay(off, "2026-11-02", 1).plan, "tool"), undefined);
+  assert.equal(P.minDailyOf({ daily: true, dailyQty: 1, dailyMin: 30, minutes: 30, minDailyMin: 30 }), 0);
+  assert.equal(P.minDailyOf({ minutes: 0, minDailyMin: 30 }), 0);
+  assert.equal(P.minDailyOf({ minutes: 180 }), 0);
+});
+
+test("4.6 まとめて登録: 1日の最低時間を引き継ぐ", () => {
+  const weeks = { a: { id: "a", start: "2026-10-26", end: "2026-11-01", items: [{ id: "1", name: "ツール開発", minutes: 180, priority: 3, minDailyMin: 30 }] } };
+  assert.equal(P.itemDefaults(weeks, "ツール開発", "2026-11-02", [], []).minDailyMin, 30);
+  const rows = P.normalizeImportRows([{ include: true, name: "ツール開発", target: 1, minutes: 180, priority: 3, minDailyMin: 30 }], "week", []);
+  assert.equal(rows.rows[0].minDailyMin, 30);
 });

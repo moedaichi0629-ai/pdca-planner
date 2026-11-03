@@ -316,7 +316,7 @@
       ${plan ? `<input type="checkbox" id="done-${k}" data-act="toggle-done" data-item="${k}" ${done ? "checked" : ""} aria-label="${esc(it.name)}を完了にする">` : "<span></span>"}
       <div class="name">${esc(it.name)} <span class="small muted">${target}</span></div>
       <div class="act">
-        <label class="row">実績<input id="qty-${k}" type="number" min="0" step="1" inputmode="numeric" data-act="log" data-field="qty" data-item="${k}" value="${esc(l?.qty)}" placeholder="${plan ? esc(plan.qty) : 0}">${esc(it.unit)}</label>
+        <label class="row">実績<input id="qty-${k}" type="number" min="0" step="any" inputmode="decimal" data-act="log" data-field="qty" data-item="${k}" value="${esc(l?.qty)}" placeholder="${plan ? esc(plan.qty) : 0}">${esc(it.unit)}</label>
         <label class="row">かかった時間<input id="min-${k}" type="number" min="0" step="5" inputmode="numeric" data-act="log" data-field="min" data-item="${k}" value="${esc(l?.min)}" placeholder="${plan ? esc(plan.min) : 0}">分</label>
       </div>
     </div>`;
@@ -503,6 +503,12 @@
           ? `稼働日は毎日 ${fmtNum(it.dailyQty)}${esc(it.unit)}（${fmtMin(P.num(it.dailyMin))}）を先に入れます。週の目標量の目安：${fmtNum(it.dailyQty)} × 稼働日 ${wd}日 = ${fmtNum(P.num(it.dailyQty) * wd)}${esc(it.unit)}`
           : "1日にやる量を0より大きい数で入れてください。入れるまでは毎日やる項目として扱いません。"}</p>`
       : "";
+    // F-15 1日の最低時間（毎日やる項目では使わない）
+    const minD = P.minDailyOf(it);
+    const minDailyField = daily
+      ? ""
+      : `<label class="f">1日の最低時間(分)<input id="minDailyMin-${k}" type="number" min="0" step="5" data-act="item" data-field="minDailyMin" data-item="${k}" value="${esc(it.minDailyMin)}" placeholder="なし"></label>
+        ${minD > 0 ? `<p class="small muted full">作業する日は毎日 ${fmtMin(minD)} 以上を先に入れます。1${esc(it.unit || "回")}を終えられない日は、途中まで（例 ${fmtNum(Math.round((minD / P.num(it.minutes)) * 100) / 100)}${esc(it.unit)}）を予定にします。</p>` : ""}`;
     const armed = ui.armed === it.id;
     return `<div class="item">
       <label class="f wide">やること<input id="name-${k}" data-act="item" data-field="name" data-item="${k}" value="${esc(it.name)}" placeholder="例 ココナラ商品の出品"></label>
@@ -515,6 +521,7 @@
       <label class="f">カテゴリー${categorySelect(`id="category-${k}" data-act="item" data-field="categoryId" data-item="${k}"`, it.categoryId)}</label>
       <label class="row small daily-check"><input type="checkbox" id="daily-${k}" data-act="item" data-field="daily" data-item="${k}"${daily ? " checked" : ""}>毎日やる</label>
       ${dailyFields}
+      ${minDailyField}
       <div class="foot"><span>${avgHtml}</span><button type="button" class="btn danger${armed ? " armed" : ""}" data-act="del-item" data-item="${k}">${armed ? "もう一度押すと削除" : "削除"}</button></div>
     </div>`;
   }
@@ -1171,7 +1178,7 @@
       persist();
       render();
     } else if (act === "add-item") {
-      const it = { id: uid("i"), name: "", unit: "件", target: 1, minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [] };
+      const it = { id: uid("i"), name: "", unit: "件", target: 1, minutes: 30, priority: 3, categoryId: null, daily: false, dailyQty: null, dailyMin: null, weekdays: [], minDailyMin: null };
       items(w).push(it);
       persist();
       render();
@@ -1301,6 +1308,7 @@
       if (f === "priority") it.priority = Math.min(5, Math.max(1, Math.round(P.num(el.value)) || 1));
       else if (f === "target" || f === "minutes") it[f] = Math.max(0, P.num(el.value));
       else if (f === "dailyQty" || f === "dailyMin") it[f] = el.value === "" ? null : Math.max(0, P.num(el.value));
+      else if (f === "minDailyMin") it.minDailyMin = el.value === "" || P.num(el.value) <= 0 ? null : Math.min(24 * 60, P.num(el.value));
       else if (f === "categoryId") it.categoryId = P.categoryOf({ categoryId: el.value }, cats());
       else if (f === "daily") {
         it.daily = el.checked;
