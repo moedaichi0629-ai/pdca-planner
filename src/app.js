@@ -1541,7 +1541,9 @@
       day.log = day.log || {};
       const id = el.dataset.item;
       const l = (day.log[id] = day.log[id] || {});
+      let justDone = false;
       if (act === "toggle-done") {
+        justDone = el.checked && !l.done;
         l.done = el.checked;
         // チェックを入れたとき、量と時間が空なら予定の値を入れる
         const p = (day.plan || []).find((x) => x.itemId === id);
@@ -1555,6 +1557,8 @@
       if (!l.done && (l.qty === "" || l.qty == null) && (l.min === "" || l.min == null)) delete day.log[id];
       persist();
       scheduleRender();
+      // F-18 項目を1つ終えたら、ごほうびに幕を開けて画像を見せる（毎回ちがう画像）
+      if (justDone) openStageReward();
     } else if (act === "week-date") {
       const f = el.dataset.field;
       const s = f === "start" ? el.value : w.start;
@@ -1741,6 +1745,14 @@
         stage.busy = false;
       }, DUR * 1000);
     }, soundOn() ? 850 : 250);
+  }
+
+  // 完了したときに開く。2枚以上あれば、前回とちがう画像をランダムに選ぶ
+  function openStageReward() {
+    const n = stage.list.length;
+    if (!n || stage.el) return;
+    if (n > 1) stage.index = (stage.index + 1 + Math.floor(Math.random() * (n - 1))) % n;
+    openStage();
   }
 
   function closeStage() {
